@@ -1,0 +1,41 @@
+Why Simulink/SimEvents specifically
+
+For this kind of problem — discrete entities (patients/images) flowing through stages with queues, capacity limits, and stochastic service times — Simulink's SimEvents toolbox is the right tool, since it's purpose-built for discrete-event simulation (entity generation, queues, servers, gates) rather than continuous-time signal modeling. You could do this analytically with queueing theory (M/M/1, M/G/1 formulas), but Simulink lets you model the realistic complications — variable service time distributions, multiple resource types, feedback loops (recapture), and time-of-day arrival patterns — that closed-form queueing math struggles with.
+
+Step 1: Model the Pipeline as a Chain of Entities, Queues, and Servers
+
+Map each pipeline stage to a SimEvents construct:
+- Entity Generator → patient arrivals at screening sites, following a realistic arrival pattern (not uniform — likely Poisson-distributed within clinic operating hours, with daily/weekly seasonality if the program has scheduled camps vs. walk-in clinics).
+- Image Acquisition (Server) → models camera throughput — service time = time per capture including technician setup, patient positioning, and multi-image capture (typically 2 images/eye = 4/patient). Capacity = number of cameras/technicians per site.
+- Transmission (Server + bandwidth constraint) → models the network hop from capture site to central processing — service time here is a function of image file size (fundus images are typically several MB, more if uncompressed) divided by available bandwidth, which is often the real bottleneck in district-level programs with rural connectivity.
+- Quality Gate (from Module 1) → modeled as a probabilistic Gate/Switch block — route entities based on a quality-pass probability (e.g., 80% pass, 15% enhance-and-pass, 5% reject-recapture), feeding rejected entities back into a recapture loop (a feedback path back to Image Acquisition — this matters, since recapture consumes camera/technician time twice).
+- Automated Processing (Server) → segmentation + grading compute time, modeled with a capacity representing available compute nodes/GPUs, and service time drawn from the actual measured processing latency of Modules 2–3.
+- Human Review Queue (Server with limited resource pool) → ophthalmologist review capacity, service time centered around your 30-second target (with realistic variance — some cases take longer, especially overrides/borderline cases flagged by Module 4). Capacity = number of reviewing ophthalmologists available (often the tightest and most expensive resource in the whole system).
+- Report Delivery (Sink) → exit point, timestamped for total turnaround-time measurement.
+
+Step 2: Parameterize with Realistic Distributions, Not Point Estimates
+
+- Service times should be stochastic distributions, not fixed constants — exponential or lognormal for processing/review times (lognormal often fits human task durations better, since they're right-skewed — most reviews are quick, a few take much longer).
+- Arrival rate: for 100,000 patients/year, that's roughly 274/day averaged, but real programs concentrate volume — screening camps might see 200–500 patients in a single day at one site. Model peak-load scenarios explicitly, not just the average, since average-case sizing under-provisions for real peak demand.
+- Bandwidth: model as a shared, finite resource if multiple sites transmit concurrently — this is where district-level programs with poor rural connectivity often hit unexpected bottlenecks that don't show up in per-site testing.
+
+Step 3: Instrument for the Metrics That Actually Drive Decisions
+
+- Queue lengths and wait times at each stage — identifies where patients/images pile up under load.
+- Resource utilization — % time each server (camera, compute node, reviewer) is busy vs. idle; consistently >85–90% utilization at a stage signals it's your bottleneck and next investment target.
+- End-to-end turnaround time — critical because delayed screening results have real clinical consequences (referable patients need timely specialist follow-up).
+- Backlog growth over time — run the simulation over a full day/week and watch whether queues stabilize or grow unbounded; unbounded growth at any stage under expected peak load is a direct signal that stage's capacity needs to scale before deployment.
+
+Step 4: Use the Model for Resource Allocation Optimization
+
+This is the actual point of building the simulation — run parameter sweeps:
+- Vary number of cameras/sites vs. patient wait time — find the minimum camera count that keeps wait times acceptable.
+- Vary ophthalmologist review capacity vs. backlog — since reviewers are typically the most expensive and scarcest resource, find the minimum count that avoids unbounded queue growth at expected referable-case volume (~10–15% of screened patients, depending on population prevalence).
+- Vary bandwidth allocation vs. transmission delay — determine if compression (trade image fidelity for transmission speed — worth cross-checking against Module 1's quality requirements, since over-compression could push images into the "ungradeable" bucket) meaningfully changes throughput.
+- Run what-if scenarios: a new district added mid-year, a temporary reviewer shortage, a camp with 3x normal daily volume — Simulink lets you test these without touching real infrastructure.
+
+MATLAB/Simulink tooling and a note on where this module sits differently from the rest
+
+- SimEvents blocks to use directly: Entity Generator (arrivals), Entity Server (acquisition/transmission/processing/review, each with configurable capacity and service time distribution), Entity Gate/Entity Router (quality gate branching), Entity Queue (waiting line at each stage), Simulink Scope/Entity Departure Statistics for instrumentation.
+- Feed it real numbers, not guesses: the service-time distributions for Modules 1–4 should come from actual measured latency on representative hardware, not assumed constants — this simulation is only as trustworthy as its input parameters, and district-level budget decisions will get made off its output.
+- This module is fundamentally about tradeoffs, not accuracy — unlike Modules 1–4 where you're optimizing detection/classification performance, here you're optimizing a cost/capacity allocation problem: minimum ophthalmologist headcount, camera count, and bandwidth provisioning that keeps the system stable under realistic peak load, without over-provisioning expensive resources (especially reviewer time) beyond what's needed.
