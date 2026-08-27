@@ -1,0 +1,34 @@
+Step 1: Grad-CAM Attention Maps
+
+Grad-CAM highlights which image regions most influenced the CNN branch's prediction, by backpropagating gradients from the predicted class score to the last convolutional layer and weighting activation maps accordingly.
+- Generate a separate Grad-CAM map for the predicted class specifically (not a generic "most salient" map) — this matters because you want the heatmap to answer "why Level 3" not just "what looks unusual."
+- Overlay as a semi-transparent heatmap on the original fundus image (imfuse or manual alpha blending), using a colormap that reads intuitively to clinicians (red/hot = high influence) and doesn't conflict with the natural red-orange retinal background — a diverging colormap (e.g., blue-to-red) tends to work better than a pure heat colormap here.
+- Known limitation to flag: Grad-CAM shows where the CNN branch looked, not necessarily why — it can highlight plausible-looking but clinically irrelevant regions (a known failure mode in medical imaging Grad-CAM applications). This is exactly why it shouldn't be the only evidence surfaced — pair it with Step 2's explicit lesion evidence, which is causally grounded rather than gradient-attribution-based.
+
+Step 2: Lesion-Level Evidence Correlated with Clinical Criteria
+
+This is the more clinically trustworthy half of explainability, because it draws directly from Module 2's segmentation outputs rather than a gradient attribution heuristic.
+- Overlay individual segmentation masks (MAs, hemorrhages, exudates, NV regions) directly on the image, color-coded by lesion type, with counts labeled per quadrant.
+- Explicitly state which ICDR criterion drove the grade — e.g., if Stage 3 was assigned via the 4-2-1 rule, show which specific condition triggered it: "Severe NPDR: hemorrhages present in 4/4 quadrants" with each quadrant's hemorrhage count displayed, or "venous beading detected in 2 quadrants (superior, temporal)." This turns a black-box grade into an auditable clinical statement the ophthalmologist can verify in seconds by glancing at the quadrant breakdown, rather than re-deriving it from scratch.
+- This is also where the earlier design choice (hybrid CNN + explicit clinical feature branch) pays off directly — the clinical feature branch's inputs are the explainability evidence, with no separate extraction step needed.
+
+Step 3: Calibrated Confidence Scores
+
+- Display the calibrated referable-DR probability from Module 3 (post Platt-scaling/isotonic regression) rather than a raw softmax value — an ophthalmologist should be able to interpret "78% confidence" as meaning something close to its literal frequentist sense, not an overconfident CNN artifact.
+- Flag low-confidence and borderline cases distinctly — cases where the calibrated probability sits close to the decision threshold (e.g., within a defined margin, say ±10%) should be visually flagged as "borderline — recommend priority review," since these are exactly the cases where the ophthalmologist's judgment adds the most value over the model's.
+- Consider also surfacing per-class probability distribution (not just the top class), since a case with, say, 45% Level 2 / 40% Level 3 / 15% Level 1 tells the reviewer something meaningfully different than 95% Level 2 — even if both produce the same argmax grade.
+
+Step 4: Automated Annotated Report Generation
+
+This is the artifact that actually gets reviewed — everything above needs to compress into a single-glance layout.
+- Structured, consistent layout — same panel positions every time, so ophthalmologists build reviewing muscle memory (critical for hitting the 30-second target at scale): original image, annotated overlay, Grad-CAM overlay, quadrant-wise lesion count table, ICDR grade with the triggering criterion stated in one line, calibrated confidence, and a clear "confirm / override" action.
+- Generate as a PDF or structured image report (MATLAB's report generator via Report Generator toolbox, or simpler — compose a tiled figure via subplot/tiledlayout and export via exportgraphics) with consistent, print/screen-friendly formatting.
+- Include an audit-trail footer: image quality score from Module 1, model version, and timestamp — useful for retrospective QA and for tracing errors back through the pipeline later.
+- One-line clinical summary at the top — the single sentence an ophthalmologist reads first, e.g., "Referable DR (Severe NPDR, Level 3) — 4/4 quadrant hemorrhage — confidence 91%" — everything else on the report supports or lets them verify this one line, rather than requiring them to synthesize it themselves.
+
+Design considerations that matter for the 30-second target
+
+- Don't make the ophthalmologist hunt for the decision — the one-line summary and confirm/override control should be the first and last thing they interact with; everything else (Grad-CAM, quadrant table) is supporting evidence they glance at only if something feels off, not evidence they're required to parse every time.
+- Capture the override, not just the confirmation — every time an ophthalmologist overrides the model's grade, log the original prediction, the corrected grade, and (ideally) a reason code. This becomes your most valuable ongoing dataset for model retraining and for auditing systematic failure modes (e.g., if overrides cluster around Stage 2/3 boundary cases, that tells you exactly where to focus the next training iteration).
+- Grad-CAM and lesion evidence should agree, and disagreement is itself a signal — if the Grad-CAM heatmap lights up in a region with no corresponding segmented lesion, that's worth surfacing as a flag rather than silently ignoring, since it may indicate the CNN branch is keying off something not captured by Module 2 (could be a real finding the segmentation missed, or a spurious correlation).
+- MATLAB tooling: gradCAM (built into Deep Learning Toolbox since R2021a) handles the attribution computation directly; tiledlayout/subplot + exportgraphics for report composition; MATLAB Report Generator toolbox if you want templated, database-driven report generation at scale rather than one-off figure exports.
