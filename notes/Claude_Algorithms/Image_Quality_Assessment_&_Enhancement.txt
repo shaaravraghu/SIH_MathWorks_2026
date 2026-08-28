@@ -1,0 +1,54 @@
+Why this module matters
+In real-world telemedicine screening (especially non-mydriatic cameras operated by technicians, not ophthalmologists), a large fraction of captured images — often 10–20% — are ungradeable due to poor focus, patient movement, eyelash artifacts, uneven illumination, or partial pupil dilation. If these get graded anyway, you get false negatives that are clinically dangerous (a real DR case gets missed because the model couldn't see the lesions) — not just noisy accuracy metrics. So IQA has to run before everything else and act as a gatekeeper.
+
+Step 1: Quality Metrics — what to actually measure
+
+Focus / sharpness
+- Laplacian variance (imfilter with a Laplacian kernel, then variance of the response) — a classic, fast sharpness proxy. Low variance = blurry.
+- Frequency-domain analysis: 2D FFT of the image, measure energy in high-frequency bands relative to total energy. Sharp images retain more high-frequency content.
+- Vessel-based focus check: since retinal vessels are the highest-contrast thin structures, a vesselness filter (Frangi filter) response magnitude is a good clinically-relevant sharpness proxy — blurry images have weak vessel responses.
+
+Illumination uniformity
+- Divide the image into local patches (e.g., 8×8 grid), compute mean intensity per patch, and check the range/variance across patches. Large deviation = uneven illumination (common with off-axis flash or vignetting).
+- Homomorphic filtering can separate illumination (low-frequency) from reflectance (high-frequency) components to explicitly quantify the illumination component's non-uniformity.
+
+Field of view / positioning
+Since fundus images are roughly circular against a black background, threshold the image (Otsu's method via graythresh) to find the FOV mask, then check: (a) FOV diameter relative to expected size, (b) whether the optic disc and macula both fall within a valid central region. A poorly centered or cropped capture (missing disc or macula) should fail here even if sharp and well-lit.
+
+Contrast
+Global contrast (standard deviation of intensities) and local contrast (e.g., Michelson contrast in patches) — low contrast often correlates with cataract haze or hazy media, which genuinely degrades gradability rather than being fixable by enhancement alone.
+
+Artifacts
+Detect eyelash/eyelid intrusion (dark, high-gradient regions at the FOV border), dust/reflection artifacts (small bright saturated spots), and specular highlights (localized saturation in the flash center).
+
+Step 2: Composite Quality Score
+
+Rather than hard-threshold each metric independently, combine them into a single gradability score — either:
+- A weighted rule-based score, e.g., Q = w1*focus + w2*illum_uniformity + w3*fov_coverage + w4*contrast - w5*artifact_penalty, with weights tuned against ophthalmologist-labeled gradable/ungradeable ground truth, or
+- A lightweight trained classifier (SVM or shallow CNN in MATLAB's Deep Learning Toolbox) trained on hand-labeled gradable/ungradeable images, using the above metrics as features. This tends to generalize better than fixed rules across camera types.
+The output should be a calibrated probability (gradable vs. not), not just a binary pass/fail — this feeds into the decision logic below.
+
+Step 3: Decision Logic (Three-Way Branch)
+
+This is the key design decision — don't just accept/reject. Use three paths:
+1. High quality → pass through unchanged to segmentation/grading.
+2. Borderline quality → apply targeted adaptive enhancement, then re-run the quality check on the enhanced image before allowing it downstream. If it still fails, escalate to reject.
+3. Ungradeable → reject outright, with a specific reason code (not just "bad image") so the technician gets actionable recapture feedback — e.g., "recapture: eyelash artifact obscuring superior field" vs. "recapture: image underexposed, increase flash intensity."
+This specificity matters a lot for deployment — technicians without ophthalmology training need concrete correction guidance, not a generic rejection.
+
+Step 4: Adaptive Enhancement (only for borderline images)
+
+CLAHE (Contrast Limited Adaptive Histogram Equalization)
+- adapthisteq in MATLAB — apply on the green channel (or luminance in Lab space) since the green channel has the best vessel/lesion contrast in fundus photography and avoids amplifying red-channel noise.
+- Critical: apply per-channel or in Lab color space and clip the contrast limit — unconstrained CLAHE will amplify noise and create false lesion-like artifacts, which is dangerous for a diagnostic pipeline.
+
+Illumination normalization
+- Estimate the illumination field via large-kernel Gaussian blur or morphological closing, then divide it out (background subtraction / shading correction). This corrects vignetting and off-center flash without altering lesion appearance.
+- Alternative: homomorphic filtering — separate into illumination (low freq) and reflectance (high freq) in the log domain, suppress the illumination component, recombine.
+
+Denoising
+- Median filtering (medfilt2) for salt-and-pepper sensor noise.
+- Wiener filtering (wiener2) for adaptive noise suppression while preserving edges — important since vessels and microaneurysms are edge-like features you don't want smoothed away.
+- Wavelet denoising (wdenoise2) as a higher-quality but costlier alternative for images with texture-correlated noise.
+
+Order matters: illumination correction → denoising → CLAHE. Enhancing contrast before correcting illumination will amplify the very unevenness you're trying to fix.
