@@ -1,1 +1,8 @@
+Choosing Right Images:
 
+#1
+Black-region of image: 15-35%; RGB: (255,255,255)
+Logic: ratio of circle circumcised by square is 78.5% (providing additional 3.5% of bias) and 35% derived from 3X black region (at base level 11.5%)
+Method to reduce compute: pick random 10% of horizontal pixel arrays and check if 80% of the sets have black-region ratio between 15-35%.
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occuring)
+ 
