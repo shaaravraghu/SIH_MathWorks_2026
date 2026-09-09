@@ -1,0 +1,12 @@
+Choosing Right Images:
+
+#1
+Black-region of image: 15-35/40%; RGB: (255,255,255)
+Logic: ratio of circle circumcised by square is 78.5% (providing additional 3.5% of bias) and 35% derived from 3X black region (at base level 11.5%)
+Method to reduce compute: pick random 10% of horizontal pixel arrays and check if 80% of the sets have black-region ratio between 15-35%.
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occuring)
+ 
+#2
+Mega-Pixel Size: {Borderline: (0.3 - 1 MP), Reject: (<0.3 MP), Pass: (>1 MP)}; multiply horizontal and vertical pixel number
+Logic: checking image quality manually and classifying 
+Conflict: ChatGPT suggests >8MP (not possible from dataset provided and should consider poor quality imaging tools being used)
