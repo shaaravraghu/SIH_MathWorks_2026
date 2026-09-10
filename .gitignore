@@ -12,6 +12,9 @@ aptos2019-blindness-detection/
 data/
 datasets/
 
+# But include populated feature CSVs
+!data/aptos_train_module1_features.csv
+
 # Python
 __pycache__/
 *.py[cod]
