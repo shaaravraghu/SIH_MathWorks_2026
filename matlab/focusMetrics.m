@@ -1,8 +1,22 @@
-function f = focusMetrics(I, fov)
+function f = focusMetrics(I, fov, mode)
 %FOCUSMETRICS  Stage [B] of Module 1 -- focus / sharpness features.
 %
-%   f = focusMetrics(I, fov) returns a struct of sharpness features computed
-%   on the GREEN channel inside fov.maskMeasure.
+%   f = focusMetrics(I, fov)            full mask (reference)
+%   f = focusMetrics(I, fov, 'ring')    8 x 2.5% patches @0.80R -- 4.9x faster
+%
+%   Measured on 40 APTOS images x 4 blur levels: 'ring' costs 5.4 ms vs
+%   26.4 ms for 'full', with Spearman rho = 0.985 against the full-mask
+%   value and 19% median relative error.  The 8 patches also serve directly
+%   as the regional breakdown for regionMin / regionCV.
+%
+%   NEVER downsample the image to speed this up.  Downsampling is a low-pass
+%   filter and blur is a low-pass filter, so it destroys the signal: at 4x
+%   reduction the dynamic range across sigma=0..4 collapses from 907x to 18x
+%   and a heavily blurred image reads 208x too sharp.  Spatial subsetting
+%   (patches) is safe; resolution reduction is not.  See retinaSampleMask
+%   and the Module1_Performance doc.
+%
+%   Returns a struct of sharpness features computed on the GREEN channel.
 %
 %   Run normalizeFundus FIRST.  Every metric here is scale-dependent: a
 %   "sharp" gradient at R=1400 px is a different number from the same eye at
@@ -23,9 +37,11 @@ else                                     % densest Bayer channel (sharpest)
     Ig = im2double(I);
 end
 
-M = fov.maskMeasure;                     % NEVER the raw mask: the FOV rim is a
-                                         % ~200-level cliff and dominates
-                                         % every gradient-based measure.
+if nargin < 3 || isempty(mode), mode = 'full'; end
+
+% NEVER the raw mask: the FOV rim is a ~200-level cliff and dominates every
+% gradient-based measure.  retinaSampleMask always builds from maskMeasure.
+[M, patches] = retinaSampleMask(fov, mode);
 
 % ---- second-derivative family ----------------------------------------
 L = imfilter(Ig, fspecial('laplacian', 0), 'replicate');
@@ -70,7 +86,13 @@ f.noiseSigma = sqrt(pi/2) * mean(abs(Rn(M))) / 6;
 % Partial blur (camera tilt, eye movement) is common and the global mean
 % hides it completely: on a half-blurred image the global varLap moved 1.5x
 % while the worst region moved 4,100x.
-reg  = splitRegions(M, fov);
+% In 'ring' mode the 8 sampling patches ARE the regions, so the breakdown is
+% free.  In 'full' mode fall back to centre + 4 quadrants.
+if strcmpi(mode, 'ring')
+    reg = patches;
+else
+    reg = splitRegions(M, fov);
+end
 vals = zeros(1, numel(reg));
 for k = 1:numel(reg)
     if nnz(reg{k}) > 100

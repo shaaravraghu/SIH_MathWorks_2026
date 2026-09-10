@@ -490,10 +490,35 @@ That gives you a *calibrated, defensible* statement — **"our system rejects
 images below sigma_blur = 3.2"** — instead of an arbitrary number. It is also a
 presentable result in its own right.
 
-**Only if you need a hard fast-reject gate**, `specSlope` is the safest single
-feature to use, because it is contrast-invariant and dimensionless. On the test
-image, sharp reads ~1.6 and sigma=4 reads ~10.6; a gate around **alpha > 8** catches
-gross defocus. Calibrate on your own data before trusting it.
+### Do NOT gate on `specSlope` — corrected
+
+An earlier draft of this document recommended `specSlope` as the safest single
+fast-reject feature, on the grounds that it is contrast-invariant and
+dimensionless. **Measured data on APTOS overturned that.**
+
+From [`Module1_CSV_Schema.md`](Module1_CSV_Schema.md): `specSlope` has Spearman
+**rho = 0.460 against `diagnosis`** — by far the highest of any [B] feature. It
+is not measuring optics; it is substantially measuring *disease*. A diseased
+retina has different frequency content because it is covered in lesions.
+
+Gate on it and you build a system that preferentially refuses to screen the
+patients who most need referral. Keep it as a classifier **input**; never as a
+gate.
+
+For reference, the disease correlations actually measured:
+
+| Feature | rho vs `diagnosis` | Verdict |
+|---|---|---|
+| `tenengrad` | **0.000** | perfectly disease-blind |
+| `brenner` | -0.038 | safe |
+| `tenengradVar` | 0.067 | safe |
+| `varLapNorm` | 0.126 | safe — **the one to gate on if you must** |
+| `noiseSigma` | 0.354 | input only |
+| `specSlope` | **0.460** | **input only — never gate** |
+
+**If you need a hard gate,** use `varLapNorm` or `regionMin`, and re-measure rho
+on your own data first. The threshold still comes from the synthetic sweep above,
+not from a hand-picked number.
 
 ---
 

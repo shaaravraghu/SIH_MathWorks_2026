@@ -490,24 +490,59 @@ relative-threshold fallback on the same images:
 The fallback fixed **all 12**. `detectFOV` now retries automatically whenever
 `raggedness > 1.4`.
 
-### Measured distributions (145 APTOS images, stratified by grade)
+### Measured distributions (150 APTOS images, stratified by grade)
+
+Detection rate **150/150 = 100%** with the raggedness retry (96.7% without).
+The retry fired on **25/150 = 16.7%** of images — Otsu is unreliable on roughly
+one real fundus image in six.
 
 ```
    feature       min       p5      p25   median      p75      p95      max
-         R   224.076  274.724  730.714 1084.574 1127.156 1501.657 1800.146
-  areaFrac     0.851    0.867    0.875    0.894    0.999    1.005    1.146
-    offset     0.003    0.004    0.024    0.038    0.086    0.307    0.519
-borderFrac     0.000    0.000    0.102    0.279    0.435    0.446    0.493
+         R   207.177  274.600  628.764 1126.513 1292.100 1501.705 1800.146
+  residual     0.002    0.002    0.002    0.003    0.028    0.084    0.215
+raggedness     0.910    0.912    0.916    0.918    0.944    1.280    1.895
+      circ     0.258    0.574    0.970    1.045    1.099    1.208    1.213
+  areaFrac     0.810    0.862    0.875    0.890    0.973    1.005    1.050
+    offset     0.003    0.004    0.021    0.034    0.080    0.195    0.386
+borderFrac     0.000    0.000    0.104    0.399    0.444    0.460    0.687
 ```
 
-Two things to read off this:
+Read off this:
 
-- **`R` spans 224 to 1800 px — an 8x range** within one dataset. This is the
+- **`R` spans 207 to 1800 px — an 8.7x range** within one dataset. This is the
   empirical justification for `normalizeFundus`.
-- **`borderFrac` maxes at 0.493**, exactly as the synthetic clipping table
-  predicted. The original `> 0.5` gate would have rejected the worst-clipped real
-  images for no good reason; `> 0.80` never fires, which is correct for a
-  fast-reject guard.
+- **`residual` is sharply bimodal**: median 0.003 (an excellent circle fit) with a
+  tail to 0.215. That separation is what makes it a usable shape feature.
+- **`circ` is not** — p5 = 0.574, median 1.045. Same images, useless spread.
+- **`borderFrac` maxes at 0.687**, comfortably under the 0.80 guard. The original
+  `> 0.5` gate would have rejected legitimately clipped images.
+
+### The gate skews toward sick patients — UNRESOLVED
+
+Running the fast-reject gate over the same 150 images:
+
+| Grade | Rejected | Rate |
+|---|---|---|
+| 0 | 0/30 | 0% |
+| 1 | 0/30 | 0% |
+| 2 | 3/30 | 10% |
+| 3 | 4/30 | 13% |
+| 4 | 3/30 | 10% |
+
+**All 10 rejections are grade >= 2. None are grade 0 or 1.** Median `residual` by
+grade: 0.0020, 0.0029, 0.0233, 0.0164, 0.0182 — an order of magnitude jump at
+grade 2.
+
+This is the [disease-blindness failure](Module1_B_Focus_Metrics.md#the-disease-blindness-check)
+firing for real. Whether the cause is pathology or the APTOS acquisition confound
+(48% of grade-0 images are 1050x1050 or 819x614 vs 3% of grades 2-4), the
+**effect** is identical and unacceptable: the system refuses to screen exactly the
+patients who need referral.
+
+**Do not ship a `residual` threshold until those 10 images have been reviewed by
+eye** and confirmed genuinely ungradable. If they are gradable, the threshold is
+wrong. If they are ungradable, the rejection is correct but the correlation with
+grade must be documented and monitored.
 
 ### Two caveats that matter more than the numbers
 

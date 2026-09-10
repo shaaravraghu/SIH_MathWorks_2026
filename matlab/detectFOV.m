@@ -1,8 +1,25 @@
-function fov = detectFOV(I)
+function fov = detectFOV(I, scale)
 %DETECTFOV  Locate the circular retinal field of view in a fundus image.
 %
-%   fov = detectFOV(I) takes an RGB fundus image and returns a struct with
-%   the retinal disc geometry plus the quality features derived from it.
+%   fov = detectFOV(I)          full resolution
+%   fov = detectFOV(I, 0.5)     detect at half scale, rescale geometry
+%
+%   SPEED.  Detection is ~300 ms per megapixel (Ryzen 5 7535U), so a
+%   4288x2848 IDRiD image costs 3.7 s at full resolution -- unusable in a
+%   capture loop.  Because the FOV boundary is an APERTURE (a purely
+%   low-frequency step), downsampling preserves it almost exactly:
+%
+%     scale   speedup   median |dR|   p95 |dR|
+%      1/2      4.4x       0.83 px     1.94 px     <- recommended
+%      1/4     18.0x       2.47 px    59.46 px     <- bad tail, avoid
+%      1/8     60.3x       5.76 px    68.30 px
+%
+%   Use scale = 0.5.  This is the OPPOSITE of stage [B]: focus metrics
+%   measure high-frequency energy, and downsampling is a low-pass filter,
+%   so [B] must never be downsampled (see Module1_Performance doc).
+%
+%   Takes an RGB fundus image and returns a struct with the retinal disc
+%   geometry plus the quality features derived from it.
 %
 %   Channel choice: we threshold the RED channel.  Haemoglobin barely
 %   absorbs above 600 nm, so the retina returns red light almost uniformly
@@ -26,6 +43,8 @@ function fov = detectFOV(I)
 %   Validated on 150 stratified APTOS 2019 images: 100% detection after the
 %   raggedness retry below (96.7% without it).
 
+if nargin < 2 || isempty(scale), scale = 1; end
+
 % ---- 0. normalise type ------------------------------------------------
 % im2double once, at the top.  uint8 arithmetic SATURATES in MATLAB, so any
 % subtraction downstream would silently clamp negatives to zero.
@@ -40,6 +59,11 @@ end
 % Degenerate red channel (red-free capture, or an already-processed image).
 if size(I,3) == 3 && std(Ir(:)) < 0.01
     Ir = max(I, [], 3);
+end
+
+fullSize = size(Ir);
+if scale < 1
+    Ir = imresize(Ir, scale, 'bilinear');
 end
 
 % ---- 1. threshold, with a raggedness retry ----------------------------
@@ -71,8 +95,17 @@ if ~fov.ok
     return                              % caller must check fov.ok
 end
 
+% ---- 1b. rescale geometry back to full resolution ---------------------
+% The mask is resized nearest-neighbour so genuine boundary shape (notches,
+% eyelid bites) survives; centre and radius scale linearly.
+if scale < 1
+    fov.mask   = imresize(fov.mask, fullSize, 'nearest');
+    fov.centre = fov.centre / scale;
+    fov.radius = fov.radius / scale;
+end
+
 % ---- 2. finish up -----------------------------------------------------
-[h, w] = size(Ir);
+[h, w] = size(fov.mask);
 fov.offset = hypot(fov.centre(1) - w/2, fov.centre(2) - h/2) / fov.radius;
 
 % The FOV rim is a ~200-level intensity cliff.  Left in, it dominates every
