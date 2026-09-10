@@ -1,0 +1,100 @@
+Workflow Diagram
+
+
+Start
+  |
+Pixel Dimension (#1) -> Exit (Fail, Borderline)
+  |
+FOV Detection (#2)
+- Circularity (#2.1) -> Exit (Fail)
+- Black Region (#2.2) -> Exit (Fail)
+  |
+Sharpness/ Contrast (#3)
+- Benner Gradient (#3.2) -> Exit (Fail)
+  |  CONTINUE
+- Variance of Laplacian (NORMED) + SpecSlope (#3.1) -> Exit (Fail, Borderline)
+  |  CONTINUE
+- TenengradVar (#3.3) -> Exit (Fail, Borderline)
+  |
+PASS
+
+
+Borderline
+  |
+Enhancement (Illumination/ Exposure/ Contrast) (#4)
+- Flat Field Correction (#4.1) -> Exit (Fail)
+- CLAHE (#4.2) -> Exit (Fail)
+  |
+Image Updation
+  |
+PASS
+
+
+
+
+
+
+
+#1
+Mega-Pixel Size: {Borderline: (0.3 - 1 MP), Reject: (<0.3 MP), Pass: (>1 MP)}; multiply horizontal and vertical pixel number
+Logic: checking image quality manually and classifying 
+Conflict: ChatGPT suggests >8MP (not possible from dataset provided and should consider poor quality imaging tools being used)
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occuring)
+
+#2
+Not worried about offset (since it doesn't changequality of interested section of image (just misaligned)
+AreaFrac, BorderFrac, and Radius are a function of Black-region of image
+
+#2.1
+Circularity: 0.85 - 1.15; feasible distortion
+Logic: used so that the segmenation calculations do not go wrong.
+Method to reduce compute: (radius vertical - radius horizontal) / mean radius: can also use diameter
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occuring)
+
+#2.2
+Black-region of image: 15-35/40%; RGB: (255,255,255)
+Logic: ratio of circle circumcised by square is 78.5% (providing additional 3.5% of bias) and 35% derived from 3X black region (at base level 11.5%)
+Method to reduce compute: pick random 10% of horizontal pixel arrays and check if 80% of the sets have black-region ratio between 15-35%.
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occuring)
+
+#3
+Region Min can be avoided since a focused shot with medical grade cameras is unlikely to 
+SpecSlope can cleanly identify blood vessels (so crucial)
+TenegradVar is a confirmation for the process Variance of Laplacian (NORMED)
+
+#3.1
+Logic to be applied: pick any random 10% of the points within diameter (0.75 * image height) with center as midpoint of image and compare with 5 pixel sets on (Right, Left, Up, Down)
+Reduces Compute/ Increases Speed 
+
+#3.2
+Logic to be applied: pick any random 8 sets of squares that are approximately each square of 2.5% of area of retina within diameter (0.75 * image height) with center as midpoint of image. perform the 2 functions on this!
+Reduces Compute/ Increases Speed 
+
+#3.3
+Logic to be applied: pick any random 8 sets of squares that are approximately each square of 2.5% of area of retina within diameter (0.75 * image height) with center as midpoint of image. perform the 2 functions on this!
+Optimisation on Variance of Laplacian (NORMED)
+
+#4
+Background Field Estimation may blur some other key contrast details in attempt to highlight few.
+Plane and Radial Fit Algorithm may fail because of many features that contadict the idea of uniform ascent/ descent.
+* Local Contrast and Saturation Counting are additions that can be used for CLAHE (for fail cases)
+Colour and Haze Signature is data intense 
+
+#4.1
+Logic: Estimate the smooth background/ illumination field and normalize the image against it.
+Methods:
+Plane Fit: models directional brightness variation.
+Radial Fit: models center-to-edge/ vignetting variation.
+Risk: Background estimation may incorrectly suppress low-contrast retinal features → potential loss of microaneurysms, vessels, hemorrhages, etc.
+Optimisation: Estimate the illumination field at reduced resolution and apply correction to the original image. Only apply at places with severely low/ high illumination.
+Fails: Significant loss of local contrast/ detail after correction → retain original image. If whole image is of form severely low/ high illumination then exit.
+
+#4.2
+Logic: Divide image into local tiles → histogram equalization → clip excessive histogram peaks → redistribute contrast.
+Colour approach: Prefer a luminance/detail channel:
+Green (G): strong retinal-detail baseline.
+Local Contrast: Measures whether local retinal features become more distinguishable after CLAHE.
+Saturation Count: Detects excessive enhancement/clipping at intensity extremes.
+Optimisation: Apply only to Borderline images and primarily within the retinal/FOV region. Apply to certain elements (like blood vessels with high R value)
+Risk: Excessive CLAHE can amplify noise/artifacts or suppress/distort subtle DR features.
+Fails: Significant increase in saturation/noise or decrease in sharpness/detail → revert to original or use milder CLAHE parameters.
