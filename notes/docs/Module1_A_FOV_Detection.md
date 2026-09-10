@@ -87,7 +87,7 @@ The black surround is 32% of the frame at ~zero intensity. It pulls the mean
 down by a third and **doubles the standard deviation**, because the largest
 intensity jump in the picture is retina-to-black — which is not retina at all.
 
-Every metric in [B], [C], [D] is wrong without the mask.
+Every metric in [B] and [C] is wrong without the mask.
 
 ```matlab
 brightness = mean(Ig(fov.maskMeasure));   % correct
@@ -624,7 +624,7 @@ but reporting bad geometry** — those are different things.
 ```
        +-- mask broken? ------------> REJECT  "no retina detected"
 [A] ---+-- geometry grossly bad? ---> REJECT  "recentre / move back"
-       +-- otherwise ---------------> [B] [C] [D] -> [E] decides
+       +-- otherwise ---------------> [B] [C] -> [E] decides    
 ```
 
 ### Exit 1 — hard failure, skip [B]-[E]
@@ -635,7 +635,7 @@ mask empty  |  mask > 98% of frame  |  R absurd (<5% or >200% of frame)
 ```
 
 Stop immediately — not because the image is necessarily bad, but because
-**there is no mask, so no downstream metric is computable.** [B], [C] and [D] all
+**there is no mask, so no downstream metric is computable.** [B] and [C] both
 take `maskMeasure` as input. Running them on a broken mask produces confident
 numbers about nothing.
 

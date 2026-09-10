@@ -426,7 +426,7 @@ lower-left        0.3630    0.03437   0.01882    0.01888
 lower-right       0.3039    0.02291   0.00000    0.02275
 centre(r<0.3)     0.3262    0.03318   0.00000    0.03518
 
-VERDICT: well exposed, no irreversible damage, no haze -> continue to [D]
+VERDICT: well exposed, no irreversible damage, no haze -> continue to [E]
 ```
 
 ### Caveat — this image is an annotated diagram, not a clean capture
@@ -557,6 +557,15 @@ bar(0:4, rate)      % MUST be flat
 
 ## Next
 
-Stage [D] — artifacts and no-reference IQA: `brisque` / `niqe` / `piqe`, dust and
-flare detection, and `fitbrisque` retrained on fundus images. Then [E], which
-weighs all ~35 features jointly and produces the three-way verdict.
+Stage [E] — the classifier, which weighs all ~35 features from [A]–[C] jointly
+and produces the three-way verdict (gradable / borderline / ungradable) plus the
+specific retake reason.
+
+> **Stage [D] was dropped.** An artifact/no-reference-IQA stage was designed and
+> tested, then removed. Its two candidate contributions did not survive
+> measurement: `darkChannel` (haze) reached rho = −0.537 against grade, worse
+> than every [C] feature, and `brisque`/`niqe`/`piqe` are trained on natural
+> photographs and are expected to be at least as disease-correlated. The one
+> component that did validate — structure-tensor `anisotropy`, which separates
+> motion blur from defocus at 94.4% where no [A]–[C] feature exceeds 66.7% — was
+> dropped with the rest as out of scope.

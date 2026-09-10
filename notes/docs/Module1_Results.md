@@ -6,8 +6,8 @@ What the features actually do, measured on the **full APTOS training set**
 Source: [`data/aptos_train_module1_features.csv`](../../data/aptos_train_module1_features.csv).
 Stage detail: [[A]](Module1_A_FOV_Detection.md) · [[B]](Module1_B_Focus_Metrics.md) · [[C]](Module1_C_Illumination.md)
 
-> **[C] figures are from 2,464 rows** — the backfill was still running. Re-run
-> the numbers below once `*_conly.csv` completes.
+> **[C] backfill complete.** All figures below are from the full 3,662 rows
+> (`data/aptos_train_module1_features_conly.csv`, 3,659 with valid [C]).
 
 ---
 
@@ -94,23 +94,47 @@ lesions, because a diseased retina has different frequency content. **Input only
 
 ## [C] Illumination, exposure & contrast
 
-| Algorithm | rho all | rho within-res | Verdict |
-|---|---|---|---|
-| **`bgSpread`** (field p95−p5) | 0.003 | **0.026–0.084** | best in [C] |
-| **`bgTiltMag`** (LS plane fit) | 0.179 | **0.031–0.095** | safe; gives retake direction |
-| `bgRadial` (vignetting) | 0.340 | 0.021–0.070 | pure confound; safe |
-| `bgCV` (median field) | 0.313 | 0.029–0.123 | safe |
-| `bgMean` | 0.218 | 0.078–0.230 | acceptable |
-| `localContrastP10` | 0.496 | 0.026–0.132 | mostly confound; OK |
-| `localContrast` (`stdfilt`) | 0.109 | 0.009–0.197 | acceptable |
-| **`colorSat`** | 0.157 | **0.014–0.502** | **unstable — do not gate** |
-| **`sat_G`** (clipping count) | 0.294 | — | only irreversible-damage measure |
-| `sat_R` | 0.390 | — | high is **normal** |
+Recomputed on all 3,659 valid rows across **six** strata (n >= 150 each).
+`max|rho|` is the worst single stratum — a feature is gate-safe only if it passes
+**everywhere**, not on average.
 
-**Why the background-field family wins:** `bgSpread`, `bgTiltMag`, `bgRadial` and
+| Algorithm | rho all | 1050² | 2416 | 2588 | 3216 | 819 | max\|rho\| | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| **`bgRadial`** (vignetting) | −0.337 | −0.034 | −0.075 | 0.038 | 0.004 | 0.038 | **0.075** | **best in [C]** |
+| **`bgTiltMag`** (LS plane fit) | −0.186 | 0.035 | 0.052 | −0.095 | −0.046 | −0.076 | **0.095** | safe; gives retake direction |
+| **`bgSpread`** (field p95−p5) | −0.005 | 0.035 | 0.113 | −0.069 | 0.036 | −0.107 | **0.113** | safe |
+| **`bgCV`** (median field) | 0.317 | 0.129 | 0.041 | −0.069 | 0.039 | 0.102 | **0.129** | safe |
+| `localContrastP10` | −0.504 | −0.021 | −0.064 | 0.131 | 0.108 | −0.164 | 0.164 | caution |
+| `bgMean` | −0.232 | −0.238 | 0.107 | −0.106 | −0.101 | −0.195 | 0.238 | caution |
+| **`localContrast`** (`stdfilt`) | −0.107 | 0.038 | **0.250** | −0.164 | 0.067 | −0.051 | **0.250** | **never gate** |
+| **`colorSat`** | −0.140 | 0.276 | −0.024 | **0.500** | 0.049 | 0.039 | **0.500** | **never gate** |
+| **`sat_G`** (clipping count) | 0.294 | — | — | — | — | — | — | only irreversible-damage measure |
+| `sat_R` | 0.390 | — | — | — | — | — | — | high is **normal** |
+
+Cost: **median 409 ms/image**, p95 865 ms — comparable to [B]. [C] is not free.
+
+**Why the background-field family wins:** `bgRadial`, `bgTiltMag`, `bgSpread` and
 `bgCV` describe the *illumination field* rather than retinal content, so they are
-close to disease-blind by construction. They are the safest gating candidates in
-Module 1.
+close to disease-blind by construction. All four clear 0.15 in every stratum.
+They are the safest gating candidates in Module 1.
+
+### Two verdicts changed when the backfill completed
+
+The 2,464-row draft had `localContrast` at 0.009–0.197 ("acceptable") and
+`localContrastP10` at 0.026–0.132 ("OK"). On the full set:
+
+- **`localContrast` → never gate.** It reaches **0.250** at 2416×1736. Local
+  contrast responds to lesion texture — exudates have sharp edges, haemorrhages
+  soft ones — so a diseased retina genuinely has different `stdfilt` statistics.
+- **`localContrastP10` → caution.** 0.164 at 819×614, over the 0.15 line.
+
+`colorSat` is confirmed as the worst: **0.276 / −0.024 / 0.500** across three
+cameras. It is not measuring the same physical quantity in each — not merely
+noisy, but inconsistent in sign and magnitude.
+
+> `2048x1536` (n=351) is excluded from the stratified columns: it is ~99% grade 0,
+> so within-stratum correlation is undefined. That is itself a symptom of the
+> acquisition confound.
 
 **Why per-channel saturation matters:** across 3,662 images, `sat_R` median is
 **0.0086** while `sat_G` median is **exactly 0.0**. The fundus is red-dominant, so
@@ -118,9 +142,6 @@ red clips routinely and harmlessly — red is only used for FOV detection. Green
 clipping destroys the lesion signal Module 2 depends on. A single grayscale
 saturation feature cannot tell these apart. Predicted in the docs, confirmed at
 scale.
-
-**`colorSat` is the one to distrust.** 0.014 in one stratum, **0.502** in another
-— it is not measuring the same thing across cameras. Keep as input; never gate.
 
 ---
 
@@ -130,14 +151,70 @@ scale.
 |---|---|---|---|
 | 1 | **Kasa circle fit** | [A] | 99.95% success, one backslash, everything depends on it |
 | 2 | **`regionMin`** | [B] | most consistently disease-blind (0.004–0.090), 21.3x spread, one line |
-| 3 | **Background field (median)** | [C] | `bgSpread`/`bgTiltMag` near disease-blind by construction |
+| 3 | **Background field (median)** | [C] | `bgRadial` (max 0.075) / `bgTiltMag` (0.095) — disease-blind by construction |
 | 4 | **`varLapNorm`** | [B] | contrast-invariant, 15.5x spread, safe |
 | 5 | **Per-channel saturation** | [C] | trivially cheap; the only irreversible-damage measure |
 
 ## Never gate on
 
-`specSlope` (0.130–0.336 within-camera) · `colorSat` (0.014–0.502, unstable) ·
-`noiseSigma` (confounder by design) · `circularity` (bimodal, useless)
+`colorSat` (0.500 worst stratum) · `localContrast` (0.250) · `specSlope`
+(0.130–0.336 within-camera) · `noiseSigma` (confounder by design) ·
+`circularity` (bimodal, useless)
+
+## Gate-safe set (max\|rho\| < 0.15 in every stratum)
+
+`bgRadial` 0.075 · `bgTiltMag` 0.095 · `regionMin` 0.090 · `bgSpread` 0.113 ·
+`bgCV` 0.129 · `varLapNorm` 0.118 · `residual` 0.14
+
+---
+
+## From feature to retake message
+
+The point of Module 1 is not a quality *score* — it is an **actionable
+instruction**. "Bad image" is worthless to a technician; "too dark, increase
+flash" is not. Every feature below maps to a specific physical cause and a
+specific thing to do about it.
+
+### Retake will fix it
+
+| Condition | What physically happened | Tell the technician |
+|---|---|---|
+| `fov_ok = 0` | no retina found at all | *"No retina detected — is the lens cap off and the camera aimed at the eye?"* |
+| `offset` > 0.35 | camera off-axis; retina displaced in frame | *"Recentre — the retina sits &lt;dir&gt; of centre."* `atan2` of the centre offset gives &lt;dir&gt; |
+| `radius` < 0.15·min(W,H) | camera too far from the eye | *"Move closer."* |
+| `areaFrac` < 0.50 | over half the disc is off-sensor | *"Retina partly out of frame — recentre and move back slightly."* |
+| `residual` > 0.06 | rim deformed by an intrusion | *"Something is blocking the edge — check eyelid and lashes."* |
+| `varLapNorm` low, `noiseSigma` low | genuine defocus | *"Out of focus — refocus."* |
+| `regionMin` low, global normal | one-sided defocus from tilt | *"One side is soft — hold the camera square to the eye."* |
+| `bgMean` low | underexposed | *"Too dark — increase flash."* |
+| `sat_G` > 0.05 | green channel clipped | *"Too bright — reduce flash."* |
+| `bgTiltMag` high | beam entering off-axis | *"Illumination uneven — shift the camera &lt;dir&gt;."* `bgTiltDir` gives &lt;dir&gt;; calibrate the sign once on your own rig |
+| `bgCV` high | uneven lighting across the field | *"Lighting uneven — recentre and retake."* |
+| `noiseSigma` high, `bgMean` low | too little light, sensor gain compensating | *"Grainy — increase illumination, don't just brighten."* |
+
+### Retake will NOT fix it
+
+| Condition | What physically happened | Tell the technician |
+|---|---|---|
+| `bgMean` normal/high **and** `localContrast` low **and** `colorSat` low | scattered light from media opacity | *"Media opacity suspected — may be ungradable regardless of technique. Refer for cataract assessment."* |
+| `bgRadial` very steep | small pupil clipping the beam | *"Consider dilation."* — a patient factor, not a technique fault |
+| `sat_G` high **and** already retaken | sensor/flash ceiling on a reflective fundus | escalate; reducing flash further will underexpose |
+
+This distinction is the clinically important one. Telling a cataract patient to
+retake five times wastes everyone's time and still produces an ungradable image.
+
+### No instruction — classifier input only
+
+`specSlope` · `noiseSigma` (alone) · `borderFrac` · `sat_R` · `localContrast` ·
+`colorSat` · `bgSpread` · `circularity`
+
+These either measure a confounder, describe fit *reliability* rather than image
+quality, or are normal-but-informative. They contribute to [E]'s verdict; none of
+them names a thing the technician can change.
+
+> **`borderFrac` is the classic trap.** A perfectly ordinary 4:3 capture reads
+> ~0.47 because the circle naturally touches top and bottom. It is a fit-
+> reliability signal, not a fault.
 
 ---
 
