@@ -127,8 +127,12 @@ C  = Ig(r0:r1, c0:c1);
 % A circular mask boundary is a hard step edge with broadband spectral
 % content that swamps everything.  Work on an interior rectangle and window
 % it so it tapers to zero.
+%
+% NOTE: hann() lives in Signal Processing Toolbox, which is NOT part of the
+% required toolbox set for this project.  Inline the window instead so this
+% file depends only on Image Processing + base MATLAB.
 C = C - mean(C(:));
-C = C .* (hann(size(C,1)) * hann(size(C,2))');
+C = C .* (hannWin(size(C,1)) * hannWin(size(C,2))');
 
 P = abs(fftshift(fft2(C))).^2;
 
@@ -148,6 +152,18 @@ fr = (lo:hi)';
 p  = polyfit(log(fr), log(prof(lo:hi) + eps), 1);
 a  = -p(1);                               % larger alpha = blurrier
 
+end
+
+% =======================================================================
+function w = hannWin(n)
+%HANNWIN  Symmetric Hann window, without Signal Processing Toolbox.
+%   w(k) = 0.5*(1 - cos(2*pi*k/(n-1))),  k = 0..n-1
+if n <= 1
+    w = 1;
+    return
+end
+k = (0:n-1)';
+w = 0.5*(1 - cos(2*pi*k/(n-1)));
 end
 
 % =======================================================================

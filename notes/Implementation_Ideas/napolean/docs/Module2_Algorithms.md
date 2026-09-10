@@ -200,17 +200,61 @@ end
 `imtophat` with **linear** structuring elements at 12 angles. Anything longer
 than L in some direction survives; compact blobs do not. Cheapest, crudest.
 
-### Which to use
+### Which to use — MEASURED on 8–10 APTOS images
 
-| | Speed | Quality | Needs training data |
+No vessel ground truth exists in APTOS, so the checks are physical plausibility:
+coverage should be 8–15% of retina, a real tree is mostly **one** connected
+component, widths should fall in 2.7–10.1 px (from the scale table), and an
+arcade tree has **200–600 branchpoints**.
+
+| Method | ms | vessel % | comps | largest % | width med/p95 | branchpoints |
+|---|---|---|---|---|---|---|
+| **Frangi** | 855 | **2.4%** ✗ | **10** ✓ | 49.6% | 6.0 / 12.6 ✓ | **195** ✓ |
+| matched filter | 736 | 4.6% ✗ | 60 ✗ | 22.5% ✗ | 4.0 / 8.0 ✓ | 1,245 ✗ |
+| morphological | **61** | 8.3% ✓ | 97 ✗ | 34.6% ✗ | 4.0 / 8.5 ✓ | 2,953 ✗ |
+| *target* | | *8–15%* | *low* | *high* | *2.7–10.1* | *200–600* |
+
+**Frangi has the right topology and the wrong amount.** 10 components, 195
+branchpoints, correct widths — a proper vessel tree, but capturing only the major
+arcades. Morphological has the right coverage with completely wrong topology
+(2,953 branchpoints is confetti). Dice between methods is only **0.28–0.58**, so
+there is no consensus to fall back on either.
+
+**Recommendation: Frangi**, on topology. It needs no training data and
+`fibermetric` is one call. But the threshold and scale set must be fixed first.
+
+### Two things that did NOT work
+
+**Hysteresis thresholding made it worse, not better.** Seeding high and growing
+low is the standard fix for severed thin branches. Measured:
+
+| Config | vessel % | comps | branchpoints |
 |---|---|---|---|
-| **Frangi** | medium | good | no |
-| Matched filter | slow (12 convolutions) | good | no |
-| Morphological | fast | crude | no |
-| U-Net | fast at inference | best (AUC ≈ 0.98 vs ≈ 0.92) | **yes** — unavailable |
+| single p88 | 11.5% | 66 | 2,539 |
+| hyst 75/92 | 20.1% | 36 | 4,130 |
+| hyst 70/90 | 23.6% | 49 | 5,070 |
+| hyst 60/85 | 32.3% | 110 | 8,200 |
 
-**Recommendation: Frangi.** It needs no training data, `fibermetric` is one call,
-and multi-scale handles the 3–10 px width range in one pass.
+Every hysteresis setting overshot coverage **and** exploded branchpoints. **None
+of seven threshold strategies met both criteria.**
+
+**The real lever is SCALE SELECTION, not thresholding.** Between rounds I added a
+σ=1.2 px scale to the Frangi bank. Branchpoints went from **195 → 2,539** at
+comparable coverage. At 14.9 µm/px, σ=1.2 px is **18 µm** — well below the
+smallest real vessel (40 µm = 2.7 px). That scale was responding to pixel noise
+and manufacturing thousands of spurious branches.
+
+> **Rule: the Frangi scale bank must be bounded by the physical vessel width
+> range from the scale table — roughly σ = 2.7 to 10 px at R=436. Going finer
+> does not find smaller vessels; it finds noise.**
+
+**Still unresolved:** the combination of round-2 scales (no σ<1.5) with a lower
+threshold has not been measured. That is the obvious next experiment, and until
+it runs, **vessel segmentation is not production-ready.**
+
+Also untested: MATLAB's own `fibermetric`, which is now available. It may
+normalise differently from this hand-rolled implementation, and the 2.4%-vs-11%
+gap is large enough that the two should be compared before either is trusted.
 
 ### Post-processing
 
@@ -527,6 +571,127 @@ Two conditions:
 
 The 4-2-1 rule gives a second, harder test: reconstruct grade 3 from per-quadrant
 haemorrhage counts and see whether it agrees with the label.
+
+---
+
+## Algorithm analysis — all 8 components
+
+One table per component: the candidates, the trade-off that decides between them,
+and the verdict. **`M` = measured on APTOS. `R` = reasoned from literature or
+geometry, not yet tested.**
+
+### 1. Vessels
+
+| Candidate | Cost | Strength | Weakness | |
+|---|---|---|---|---|
+| **Frangi (multi-scale Hessian)** | 855 ms | correct topology; no training data | severe under-segmentation at Otsu | **M** |
+| Matched filter (12 orientations) | 736 ms | good widths | fragments badly (60 comps) | **M** |
+| Morphological (linear SEs) | **61 ms** | right coverage, 14× faster | 2,953 branchpoints — confetti | **M** |
+| U-Net | fast inference | AUC 0.98 vs 0.92 | **needs labels — unavailable** | R |
+
+**Verdict: Frangi**, with the scale bank bounded to 2.7–10 px. Threshold still
+unresolved; hysteresis was tested and rejected.
+
+### 2. Optic disc
+
+| Candidate | Cost | Result | |
+|---|---|---|---|
+| **disc-sized mean on green** | **27 ms** | best physiology (bright 3.02, struct 2.14) | **M** |
+| centre-surround | 54 ms | +2.8pp agreement, 2× cost, worse physiology | **M** |
+| local variance | 26 ms | median 0.707 R — anatomically impossible | **M** |
+| Hough | 62 ms | **failed on 22/60** | **M** |
+| template match | 32 ms | struct 1.19 — locks onto any bright blob | **M** |
+
+**Verdict: disc-sized mean on green, search ≤ 0.6 R.** The search region did more
+than any detector refinement (median 0.546 → 0.445 R).
+
+### 3. Fovea
+
+| Candidate | Strength | Weakness | |
+|---|---|---|---|
+| **geometric from OD + vessel penalty** | needs no training; uses existing outputs | inherits all OD error | R |
+| darkest-region search alone | trivial | picks vessel shadows and the macula edge | R |
+| template matching | robust to noise | fovea has no consistent template | R |
+| CNN regression | best published | needs coordinates — unavailable | R |
+
+**Verdict: geometric, with the avascularity penalty.** The fovea is *avascular*,
+so a dark patch full of vessels is a shadow — penalising vessel density is what
+separates the two. Sanity-check OD–fovea distance at 2.2–2.8 DD.
+
+### 4. Microaneurysms
+
+| Candidate | Strength | Weakness | |
+|---|---|---|---|
+| **morphological closing, 12 linear SEs** | no training data; exploits shape directly | ~100+ candidates/image, needs a classifier | R |
+| matched Gaussian filter | cheap | fires on any dark blob | R |
+| Radon / wavelet | scale-selective | more parameters, no clear gain | R |
+| patch-CNN | best published | needs labels — unavailable | R |
+
+**Verdict: morphological closing + candidate classifier.** The vessel/MA
+discrimination is geometric — a vessel survives closing along its own direction,
+a compact MA is filled by every orientation. **Must run at native resolution.**
+
+### 5. Exudates
+
+| Candidate | Strength | Weakness | |
+|---|---|---|---|
+| **morphological reconstruction** | clean bright-lesion isolation | needs OD masked first | R |
+| dynamic/adaptive threshold | one call | fires on the OD and on glare | R |
+| `imextendedmax` | one call, close to reconstruction | less control over `h` | R |
+| U-Net | AUPR ≈ 0.80 published | needs labels | R |
+
+**Verdict: reconstruction, after OD masking.** Hard-vs-soft split on the **blue
+channel** — yellow hard exudates are low-blue, white cotton-wool is high-blue.
+
+### 6. Haemorrhages
+
+| Candidate | Strength | Weakness | |
+|---|---|---|---|
+| **reuse the MA dark-lesion pipeline, split at 8.4 px** | free — same machinery | inherits every MA false positive | R |
+| independent region growing | better boundaries | duplicates work | R |
+
+**Verdict: reuse the MA pipeline.** Subtype (flame vs dot/blot) from
+**alignment with the local vessel direction** — flame haemorrhages spread along
+the nerve fibre layer, and the vessel map already supplies that orientation.
+
+### 7. Neovascularization
+
+| Candidate | Strength | Weakness | |
+|---|---|---|---|
+| **vessel-map texture in sliding windows** | reuses the vessel map | vessel map is not yet reliable | R |
+| tortuosity/fractal descriptors | physically motivated | no threshold available | R |
+| CNN on vessel patches | best published | needs labels; only 295 grade-4 images | R |
+
+**Verdict: build it, do not trust it.** This is the component APTOS supports
+least — no NV annotations exist anywhere in the dataset. Report it as
+unvalidated.
+
+### 8. Quadrants / 4-2-1 rule
+
+| Candidate | | |
+|---|---|---|
+| **OD–fovea axis** | clinically correct orientation | R |
+| frame axes | wrong — but what [B] uses, because it runs before anatomy | **M** |
+
+**Verdict: OD–fovea axis**, once both localisers are trusted. Note this
+deliberately differs from [B]'s `splitRegions`.
+
+### Summary — confidence by component
+
+| Component | Verdict | Confidence |
+|---|---|---|
+| Optic disc | disc-mean on green, r ≤ 0.6 R | **measured**, but failure rate unknown |
+| Vessels | Frangi, scales 2.7–10 px | **measured as not-yet-working** |
+| Fovea | geometric + avascularity | reasoned |
+| Microaneurysms | morphological closing + classifier | reasoned |
+| Exudates | reconstruction after OD mask | reasoned |
+| Haemorrhages | MA pipeline + size split | reasoned |
+| Neovascularization | vessel texture | reasoned, weakest |
+| Quadrants | OD–fovea axis | reasoned |
+
+**Two of eight are measured. Six are designed.** Nothing in Module 2 is
+production-ready, and vessels — which gate half the pipeline — are actively
+known to be broken at present settings.
 
 ---
 

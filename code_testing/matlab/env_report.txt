@@ -1,0 +1,56 @@
+MATLAB 26.1.0.3346908 (R2026a) Update 5   11-Sep-2026 00:25:50
+computer: PCWIN64
+
+TOOLBOX                              licensed  installed
+--------------------------------------------------------
+Image Processing                            1          1
+Statistics and Machine Learning             1          1
+Deep Learning                               1          1
+Computer Vision                             1          1
+Simulink                                    1          1
+SimEvents                                   1          1
+Medical Imaging                             1          0
+
+FULL ver() LIST:
+   Computer Vision Toolbox                        26.1
+   Deep Learning Toolbox                          26.1
+   Image Processing Toolbox                       26.1
+   MATLAB                                         26.1
+   SimEvents                                      26.1
+   Simulink                                       26.1
+   Statistics and Machine Learning Toolbox        26.1
+
+FUNCTION         RESOLVES
+----------------------------------------
+graythresh       1
+imfill           1
+bwareafilt       1
+imopen           1
+imerode          1
+imgradient       1
+imgaussfilt      1
+imfilter         1
+fspecial         1
+bwboundaries     1
+regionprops      1
+imresize         1
+padarray         1
+fibermetric      1
+adapthisteq      1
+imflatfield      1
+imbilatfilt      1
+stdfilt          1
+medfilt2         1
+bwskel           1
+bwmorph          1
+imreconstruct    1
+fitcensemble     1
+perfcurve        1
+prctile          1
+corr             1
+hann             0
+accumarray       1
+
+MISSING: hann 
+
+DONE
