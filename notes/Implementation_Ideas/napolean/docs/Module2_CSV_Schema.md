@@ -1,6 +1,7 @@
 # Module 2 Feature CSV — Data Dictionary
 
 **Generator:** [`python/extract_module2_features.py`](../../../../code_testing/python/extract_module2_features.py)
+**Consumed by:** [Module 3 grading](Module3_Severity_Grading.md)
 **Merges into:** `data/aptos_train_module1_features.csv` (the existing Module 1
 CSV — Module 2 adds columns, it does not create a second file)
 

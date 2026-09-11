@@ -7,7 +7,8 @@ Component detail: [Vessels](Module2_Vessel_Segmentation.md) ·
 [Microaneurysms](Module2_Microaneurysms.md) · [Exudates](Module2_Exudates.md) ·
 [Haemorrhages/NV/Quadrants](Module2_Haemorrhages_NV_Quadrants.md) ·
 [All algorithms](Module2_Algorithms.md) ·
-**[CSV schema](Module2_CSV_Schema.md)**
+**[CSV schema](Module2_CSV_Schema.md)** ·
+**[Module 3 grading](Module3_Severity_Grading.md)**
 
 ---
 
