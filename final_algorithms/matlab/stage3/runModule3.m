@@ -1,17 +1,14 @@
 function report = runModule3(options)
 %RUNMODULE3 Stage 3 runner: Module3_Plan.md Phases 4-8.
 %
-%   % Phase 4 -- RandomForest baseline, lesion classifiers refitted per fold
+%   % Phase 5 -- train the grading network, lesion classifiers refit per fold
 %   runModule3()
-%
-%   % Phase 5 -- the MLP on the same folds and features
-%   runModule3(Model="mlp")
 %
 %   % Phase 6 -- feature-block ablation
 %   runModule3(Ablation=true)
 %
 %   % Phases 7-8 -- freeze the rules, then touch the test set ONCE
-%   runModule3(Model="forest", Test=true)
+%   runModule3(Test=true)
 %
 %   Reads data/module3_dataset.csv and data/module3_candidates/*.mat, both
 %   written by extractModule3Features (Phase 2).
@@ -20,12 +17,23 @@ function report = runModule3(options)
 %   cutpoints, calibration and operating point have been fitted on
 %   out-of-fold dev predictions (§7.2).
 %
-%   NOTHING HERE HAS BEEN RUN. It is written to the plan and needs the
-%   Phase 2 extraction output before it can execute.
+%   THE MODEL IS THE §6.2 ORDINAL-REGRESSION MLP. The §6.3 RandomForest
+%   baseline has been REMOVED at the project owner's instruction -- Module 3
+%   grading is neural-network only. This overrides decision D4, which adopts
+%   the network only if it beats the forest within resolution strata. On the
+%   previous 309 rows the forest won there (referable AUC 0.879 vs 0.813,
+%   QWK 0.779 vs 0.753), so Phase 5 now reports the network's numbers with no
+%   baseline to compare against. The lesion CANDIDATE classifier
+%   (fitLesionClassifiers.m) is a separate component and still uses a bagged
+%   tree ensemble.
+%
+%   Requires the Deep Learning Toolbox.
+%
+%   NOTHING HERE HAS BEEN RUN END-TO-END. It is written to the plan and needs
+%   the Phase 2 extraction output before it can execute.
 
 arguments
     options.DataDir (1,1) string = ""
-    options.Model (1,1) string = "forest"          % "forest" (§6.3) | "mlp" (§6.2)
     options.Block (1,1) string = "6a_measured_core" % D5 starts at 6a
     options.AllFeatures (1,1) logical = false      % all 38 inputs (D5 advises against)
     options.Ablation (1,1) logical = false         % Phase 6
@@ -57,8 +65,7 @@ end
 
 if options.Ablation
     fprintf('\n=== Phase 6: feature-block ablation ===\n');
-    report = runAblation(data, cacheDir, Model=options.Model, ...
-        RefitLesions=options.RefitLesions);
+    report = runAblation(data, cacheDir, RefitLesions=options.RefitLesions);
     return;
 end
 
@@ -71,15 +78,15 @@ else
 end
 fprintf('\nfeatures: %d (%s)\n', numel(featureNames), label);
 
-fprintf('\n=== Cross-validation (%s) ===\n', options.Model);
+fprintf('\n=== Cross-validation (MLP) ===\n');
 oof = runCrossValidation(data, cacheDir, featureNames, ...
-    Model=options.Model, RefitLesions=options.RefitLesions);
+    RefitLesions=options.RefitLesions);
 
 fprintf('\n=== Decision rules, fitted on out-of-fold predictions ===\n');
 rules = fitDecisionRules(data, oof, Calibration=options.Calibration);
 
 report = struct();
-report.model = options.Model;
+report.model = "mlp";
 report.features = {featureNames};
 report.n_features = numel(featureNames);
 report.refit_lesions = options.RefitLesions;
@@ -94,7 +101,7 @@ printGradingReport('out-of-fold (dev rows)', rules.oof_report);
 if options.Test
     fprintf('\n=== Phase 8: the held-out test set, evaluated ONCE ===\n');
     testReport = evaluateTestSet(data, cacheDir, featureNames, rules, ...
-        Model=options.Model, RefitLesions=options.RefitLesions);
+        RefitLesions=options.RefitLesions);
     report.test = testReport;
     printGradingReport('test rows', testReport);
     fprintf('  DME overrides:    %d images referred regardless of grade (§6.4)\n', ...

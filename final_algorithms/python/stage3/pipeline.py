@@ -30,7 +30,7 @@ from .lesion_classifiers import fit_fold_classifiers
 
 
 def run_cross_validation(dataset, candidate_loader, feature_names,
-                         model_kind="forest", refit_lesions=True, verbose=True):
+                         refit_lesions=True, verbose=True):
     """S6.1 steps 1-5 over all five dev folds. Returns out-of-fold predictions
     aligned to the dev rows, plus the per-fold artefacts."""
     dev = dataset.dev()
@@ -69,18 +69,14 @@ def run_cross_validation(dataset, candidate_loader, feature_names,
         scaler = models.ZScore().fit(X_train)
         X_train, X_held = scaler.transform(X_train), scaler.transform(X_held)
 
-        # --- step 4: train ---------------------------------------------------
-        weights, rounded = models.class_weights(y_train)
-        if model_kind == "forest":
-            sample_weight = weights[rounded]
-            model = models.fit_forest(X_train, y_train, sample_weight=sample_weight)
-        else:
-            if not models.weights_are_flat(weights) and verbose:
-                print(f"    WARNING: class weights {np.round(weights, 2).tolist()} are outside "
-                      f"0.9-1.1; S6.2.2 then wants a custom weighted-MSE training loop, "
-                      f"which sklearn's MLPRegressor cannot express (see models.fit_mlp). "
-                      f"The MATLAB implementation applies them.")
-            model = models.fit_mlp(X_train, y_train)
+        # --- step 4: train the network ---------------------------------------
+        weights, _rounded = models.class_weights(y_train)
+        if not models.weights_are_flat(weights) and verbose:
+            print(f"    WARNING: class weights {np.round(weights, 2).tolist()} are outside "
+                  f"0.9-1.1; S6.2.2 then wants a custom weighted-MSE training loop, "
+                  f"which sklearn's MLPRegressor cannot express (see models.fit_mlp). "
+                  f"The MATLAB implementation applies them.")
+        model = models.fit_mlp(X_train, y_train)
 
         # --- step 5: predict the held-out fold -------------------------------
         for id_code, score in zip(held.ids(), model.predict(X_held)):
@@ -130,7 +126,7 @@ def fit_decision_rules(oof, calibration_method="platt", verbose=True):
 
 
 def evaluate_test(dataset, candidate_loader, feature_names, rules,
-                  model_kind="forest", refit_lesions=True, verbose=True):
+                  refit_lesions=True, verbose=True):
     """S6.1's final step and S8's Phase 8: retrain on ALL 425 dev rows, then
     evaluate the 75 test rows exactly once with the frozen cutpoints and
     threshold.
@@ -157,11 +153,7 @@ def evaluate_test(dataset, candidate_loader, feature_names, rules,
     scaler = models.ZScore().fit(X_dev)
     X_dev, X_test = scaler.transform(X_dev), scaler.transform(X_test)
 
-    weights, rounded = models.class_weights(y_dev)
-    if model_kind == "forest":
-        model = models.fit_forest(X_dev, y_dev, sample_weight=weights[rounded])
-    else:
-        model = models.fit_mlp(X_dev, y_dev)
+    model = models.fit_mlp(X_dev, y_dev)
 
     scores = model.predict(X_test)
     predicted = cut.apply_cutpoints(scores, rules["cutpoints"])
@@ -186,8 +178,7 @@ def evaluate_test(dataset, candidate_loader, feature_names, rules,
     return report
 
 
-def run_ablation(dataset, candidate_loader, model_kind="forest",
-                 refit_lesions=True, verbose=True):
+def run_ablation(dataset, candidate_loader, refit_lesions=True, verbose=True):
     """S8 Phase 6: add the feature blocks in order, keeping a block only if
     WITHIN-RESOLUTION out-of-fold QWK improves (S4.3 - the pooled figure partly
     measures the camera, so it must not be the deciding number)."""
@@ -197,8 +188,7 @@ def run_ablation(dataset, candidate_loader, model_kind="forest",
         if verbose:
             print(f"\n[{name}] {len(feature_names)} features")
         oof = run_cross_validation(dataset, candidate_loader, feature_names,
-                                   model_kind=model_kind, refit_lesions=refit_lesions,
-                                   verbose=False)
+                                   refit_lesions=refit_lesions, verbose=False)
         cutpoints = cut.fit_cutpoints(oof["scores"], oof["grades"])
         predicted = cut.apply_cutpoints(oof["scores"], cutpoints)
         within = metrics.within_resolution(metrics.quadratic_weighted_kappa,

@@ -18,7 +18,6 @@ function table = runAblation(data, cacheDir, options)
 arguments
     data struct
     cacheDir (1,1) string
-    options.Model (1,1) string = "forest"
     options.RefitLesions (1,1) logical = true
     options.Verbose (1,1) logical = true
 end
@@ -36,7 +35,7 @@ for k = 1:numel(blocks)
     end
 
     oof = runCrossValidation(data, cacheDir, featureNames, ...
-        Model=options.Model, RefitLesions=options.RefitLesions, Verbose=false);
+        RefitLesions=options.RefitLesions, Verbose=false);
 
     cutpoints = fitCutpoints(oof.scores, oof.grades);
     predicted = applyCutpoints(oof.scores, cutpoints);
