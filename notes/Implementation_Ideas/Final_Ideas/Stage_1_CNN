@@ -6,15 +6,17 @@ Start
 Pixel Dimension (#1) -> Exit (Fail, Borderline)
   |
 FOV Detection (#2)
-- Circularity (#2.1) -> Exit (Fail)
+- Area Ratio (#2.1) -> Exit (Fail)
 - Black Region (#2.2) -> Exit (Fail)
   |
 Sharpness/ Contrast (#3)
-- Benner Gradient (#3.2) -> Exit (Fail)
+- Brenner Gradient (#3.2) -> Exit (Fail)
   |  CONTINUE
 - Variance of Laplacian (NORMED) + SpecSlope (#3.1) -> Exit (Fail, Borderline)
   |  CONTINUE
 - TenengradVar (#3.3) -> Exit (Fail, Borderline)
+  |  CONTINUE
+- Region Min (#3.4) -> Exit (Fail, Borderline)
   |
 PASS
 
@@ -34,51 +36,68 @@ PASS
 
 
 
-
 #1
 Mega-Pixel Size: {Borderline: (0.3 - 1 MP), Reject: (<0.3 MP), Pass: (>1 MP)}; multiply horizontal and vertical pixel number
-Logic: checking image quality manually and classifying 
+Logic: checking image quality manually and classifying
 Conflict: ChatGPT suggests >8MP (not possible from dataset provided and should consider poor quality imaging tools being used)
-Fails: Failed Image Quality Requirements (avoiding false-negative case from occuring)
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occurring)
 
 #2
-Not worried about offset (since it doesn't changequality of interested section of image (just misaligned)
+Not worried about offset (since it doesn't change quality of interested section of image (just misaligned)
 AreaFrac, BorderFrac, and Radius are a function of Black-region of image
 
 #2.1
-Circularity: 0.85 - 1.15; feasible distortion
-Logic: used so that the segmenation calculations do not go wrong.
-Method to reduce compute: (radius vertical - radius horizontal) / mean radius: can also use diameter
-Fails: Failed Image Quality Requirements (avoiding false-negative case from occuring)
+Area Ratio (replaces Circularity): compare the area implied by the horizontal and vertical radii against the area implied by the mean radius.
+  s1 = area of horizontal radius / area of mean radius
+  s2 = area of vertical radius   / area of mean radius
+Accept if:  0.85 < s1 < 1.15  AND  0.85 < s2 < 1.15
+Logic: used so that the segmentation calculations do not go wrong.
+Why area and not perimeter: the conventional circularity 4*pi*A/P^2 squares the perimeter, so a ragged FOV boundary inflates P and collapses the score. Measured on APTOS: 53.5% of all images fall outside 0.85-1.15, including 53.0% of images whose circle-fit residual (<0.02) says the FOV is intact. Perimeter-based circularity is therefore not usable as a gate.
+Why area and not radius: area scales as r^2, so the same 0.85-1.15 bounds are roughly twice as strict as they would be on radius directly (a radius ratio of 0.92-1.07 maps to an area ratio of 0.85-1.15). This is a deliberate tightening.
+Method to reduce compute: derive the horizontal and vertical radii from the FOV mask extents; no boundary tracing required.
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occurring)
 
 #2.2
-Black-region of image: 15-35/40%; RGB: (255,255,255)
-Logic: ratio of circle circumcised by square is 78.5% (providing additional 3.5% of bias) and 35% derived from 3X black region (at base level 11.5%)
-Method to reduce compute: pick random 10% of horizontal pixel arrays and check if 80% of the sets have black-region ratio between 15-35%.
-Fails: Failed Image Quality Requirements (avoiding false-negative case from occuring)
+Black-region of image: band depends on ASPECT RATIO (width/height); RGB: (0,0,0)
+  aspect 1.00  ->  15 - 25%
+  aspect 1.33  ->  15 - 45%
+  aspect 1.39  ->  15 - 47.5%
+  aspect 1.51  ->  15 - 50%
+  (use the nearest specified aspect band)
+Logic: ratio of circle circumscribed by square is 78.5%, so a square frame with an inscribed retina is ~21.5% black. A non-square frame cannot reach that figure: an inscribed circle covers pi/(4*a) of a frame of aspect a, so the black fraction rises with aspect ratio. A single flat band therefore rejects correctly-framed wide images.
+Geometric expectation per aspect (black %): 1.00 -> 21.5%, 1.33 -> 40.9%, 1.39 -> 43.5%, 1.51 -> 48.0%. All four sit inside the bands above.
+Measured on APTOS: the banded gate rejects 22.4% of images (a flat 15-35% band rejected 25.1%). Residual failures are concentrated in aspect 1.33 (median black 52.7%, above the 45% ceiling) and aspect 1.32 (median 17.5%, far below geometry). Crop style varies within the same aspect ratio, so aspect alone does not fully determine the black fraction - revisit if these groups matter.
+Method to reduce compute: pick random 10% of horizontal pixel arrays and check if 80% of the sets have black-region ratio inside the band for that aspect.
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occurring)
 
 #3
-Region Min can be avoided since a focused shot with medical grade cameras is unlikely to 
+Region Min is RETAINED: it is the only metric in this cascade that detects PARTIAL blur. Global metrics average a locally-blurred region away, so an image that is sharp everywhere except the macula passes every other test and is still clinically useless. Measured partial-blur sensitivity is ~4,100x. The deployment scenario is portable cameras operated by technicians with short training, not medical-grade capture, so partial defocus and local motion blur must be assumed.
 SpecSlope can cleanly identify blood vessels (so crucial)
-TenegradVar is a confirmation for the process Variance of Laplacian (NORMED)
+TenengradVar is a confirmation for the process Variance of Laplacian (NORMED)
 
 #3.1
 Logic to be applied: pick any random 10% of the points within diameter (0.75 * image height) with center as midpoint of image and compare with 5 pixel sets on (Right, Left, Up, Down)
-Reduces Compute/ Increases Speed 
+Reduces Compute/ Increases Speed
 
 #3.2
 Logic to be applied: pick any random 8 sets of squares that are approximately each square of 2.5% of area of retina within diameter (0.75 * image height) with center as midpoint of image. perform the 2 functions on this!
-Reduces Compute/ Increases Speed 
+Reduces Compute/ Increases Speed
 
 #3.3
 Logic to be applied: pick any random 8 sets of squares that are approximately each square of 2.5% of area of retina within diameter (0.75 * image height) with center as midpoint of image. perform the 2 functions on this!
 Optimisation on Variance of Laplacian (NORMED)
 
+#3.4
+Region Min: split the retinal area into 5 regions (centre + 4 quadrants), compute the focus metric per region, and take the MINIMUM across them.
+Logic: a single weak region is enough to make the image ungradable, and the minimum surfaces it where a whole-image mean hides it.
+Cost: negligible - the regions reuse the Laplacian already computed for #3.1, so this is 5 region means over an existing array.
+Fails: Failed Image Quality Requirements (avoiding false-negative case from occurring)
+
 #4
 Background Field Estimation may blur some other key contrast details in attempt to highlight few.
-Plane and Radial Fit Algorithm may fail because of many features that contadict the idea of uniform ascent/ descent.
+Plane and Radial Fit Algorithm may fail because of many features that contradict the idea of uniform ascent/ descent.
 * Local Contrast and Saturation Counting are additions that can be used for CLAHE (for fail cases)
-Colour and Haze Signature is data intense 
+Colour and Haze Signature is data intense
 
 #4.1
 Logic: Estimate the smooth background/ illumination field and normalize the image against it.

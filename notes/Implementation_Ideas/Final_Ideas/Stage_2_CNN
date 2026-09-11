@@ -2,7 +2,7 @@ LOCALIZATION / SEGMENTATION NOTES
 Localization: (x, y, r); r = radius (approx. boundaries irrespective of circularity)
 Segmentation: a label per (m x m) pixels (except vessel)
 
-SCALE TABLE: 
+SCALE TABLE:
 - Use percentage-wise radius (1D) & area (2D) per elements present in field of view.
 
 
@@ -11,16 +11,31 @@ VESSELS
 (a) Map out vessels of certain pixels (approx. width of main & 1st branch) using MATCHED FILTERING.
   -> pixel true -> 1
 
-(b) Use FRANGI method to pass through all (no min. fixed pixel width) 
-  -> venous beading (super high rb) -> 0
-  -> major vessel (big rb) -> 1
-  -> 1st branch (small rb) -> 2
-  -> minor vessel (super small rb) -> 3
+(b) Use FRANGI method to pass through all (no min. fixed pixel width)
+Calibre is taken from the SCALE at which the multi-scale response peaks, NOT from the blobness ratio rb.
+  rb = |lambda1|/|lambda2| is a SHAPE measure (tube vs blob) and is built to be scale-invariant, so it carries almost no width information.
+  width(x) = argmax over sigma of frangi_response(I, sigma)      [sigma ~ vessel_radius / sqrt(2)]
+Bands anchored to the scale table (vessel width 40-150 um = 2.7-10.1 px at 14.9 um/px):
+  -> venous beading (width above the major-vessel band) -> 0
+  -> major vessel (> 7 px)                              -> 1
+  -> 1st branch (4 - 7 px)                              -> 2
+  -> minor vessel (2.7 - 4 px)                          -> 3
+  -> below 2.7 px: not a vessel, reject
+Note: adding a scale below the smallest real vessel corrupts the map - sigma = 1.2 px (18 um) moved measured branchpoints from 195 to 2,539. Do not include scales under ~2.7 px.
 
 (c)
 - major vessel - FRANGI - regular -> 0
 - neovascularisation (high density) -> 1
 - IRMA (low density) -> 2
+Detection is by FINE-SCALE EXCESS, not by density. Neovascular vessels are thin, so they respond to a fine line detector but not a coarse one:
+  fine   = line_detector(green, L=9,  W=11)
+  coarse = line_detector(green, L=31, W=31)
+  excess = (fine > p92) AND NOT dilate(coarse > p92, 5x5)
+  nv_score = 100 * |excess| / |FOV|
+Measured: density alone is WRONG-SIGNED (rho -0.391); density x orientation incoherence is incoherent (-0.307 to +0.279); fine-scale excess gives rho +0.438 and is stable across every sharpness band.
+NVD vs NVE: NVD if within 1 DD of the optic disc centre, else NVE.
+IRMA vs NV: NOT separable by density on a colour fundus image. IRMA are intraretinal and non-leaking; NV are preretinal and leak - a depth/leakage distinction that needs fluorescein angiography or FGADR annotations. Until then treat labels 1 and 2 as a single abnormal-vessel class and report it as one number.
+Caveat: nv_score correlates with GRADE. It has never been compared against annotated neovascularisation, because APTOS has none. Report as unvalidated.
 
 Concept / labels:
     [x, y] [a] [0, 1, 2, 3] [0, 1, 2]
@@ -36,19 +51,58 @@ OPTIC DISC
 
 
 FOVEA:
-From center of Optic Disk tavel to +- 1.5X (of expected Fovea Location) with a +- 25 degree axis tilt allowed. Choose the spot which is the most darkest (and small test to see brightness increases around those spots radially).
+From center of Optic Disc travel to +- 1.25X (of expected Fovea Location) with a +- 25 degree axis tilt allowed. Choose the spot which is the most darkest (and small test to see brightness increases around those spots radially).
 Output: (x, y): no radius to be include since we are not bothered about macula and fovea is only the concern)
 
 
-Pre-Feature Engineering (for Heamorrage, Nerve Fibre Ischemia, and Hard Exudates)
-- first find spots of expected colour range in retina area (exclusive of fovea, optic disk, and vessels) with heamorrage (R: a-b, G: c-d, B: e-f), Hard Exudates (R: a-b, G: c-d, B: e-f), and Nerve Fibre Ischemia (R: a-b, G: c-d, B: e-f)
+THE FIVE-STEP LESION PIPELINE (applies to every lesion class below)
 
-Feature Engineering (for Heamorrage, Nerve Fibre Ischemia, and Hard Exudates)
+  1 preprocess        green channel, shade-corrected
+  2 subtract vessels  dilate the vessel mask 2-3 px before subtracting
+  3 threshold         -> CANDIDATES (high recall, poor precision, 100+ per image)
+  4 features          per-candidate measurements (see below)
+  5 CLASSIFIER        keep / reject each candidate
+
+Steps 4 and 5 are not optional. Measured across four components: every one that stopped at step 3 failed, and every one that added steps 4-5 worked.
+  microaneurysms   threshold only rho -0.117  ->  with classifier rho +0.508
+  haemorrhages     threshold only rho  0.036  ->  with classifier rho +0.553
+  exudates         threshold only rho -0.196  ->  classifier not yet applied, still broken
+  4-2-1 quadrants  fired on 2/70 wrong images ->  fires only at grades 3-4
+Scale-matched structuring elements: one SE cannot serve both an 8 px microaneurysm and a 30 px haemorrhage, because closing only fills what the line BRIDGES. Use L=15 for microaneurysms and L=41 for haemorrhages.
+Classifier threshold: fix the selection criterion BEFORE sweeping (e.g. "the lowest probability at which the grade-0 median count is 0"). Choosing the threshold to maximise a correlation and then reporting that correlation is circular.
+
+
+Pre-Feature Engineering (for Haemorrhage, Nerve Fibre Ischemia, and Hard Exudates)
+- first find spots in the retina area (exclusive of fovea, optic disc, and vessels) using COLOUR RATIOS rather than absolute R/G/B ranges:
+    b_over_g = mean(B) / mean(G)
+    r_over_g = mean(R) / mean(G)
+    saturation (HSV S)
+    local_contrast = candidate mean vs a 12-24 px surrounding annulus
+    bg_ratio       = candidate mean / local background mean
+Why ratios and not absolute ranges: absolute R/G/B shift with white balance, flash intensity and exposure, so a window tuned on one camera selects background on another. Measured: a microaneurysm classifier fed absolute colour reported AUC 0.995 - it had learned CAMERA IDENTITY (top features r_mean 0.237, b_mean 0.204). Banning absolute intensity dropped it to an honest 0.742. Module 2 features already predict image resolution at 67.8% (chance 17%).
+Class separation on ratios:
+    Haemorrhage            low b_over_g (dark, red),  moderate edge,  off-vessel
+    Hard Exudate           saturated yellow,          SHARP edge,     often clustered/ring
+    Nerve Fibre Ischemia   HIGH b_over_g (pale/white), GRADUAL edge,  along nerve fibres
+The yellow-vs-white split between hard exudate and cotton-wool spot is exactly a blue/green ratio question, which an absolute range discards.
+
+Feature Engineering (for Haemorrhage, Nerve Fibre Ischemia, and Hard Exudates)
+- per candidate, extract (NEVER absolute intensity):
+    colour    b_over_g, r_over_g, saturation
+    edge      gradient magnitude at the rim, edge sharpness, boundary smoothness
+    shape     area, perimeter, circularity, eccentricity, solidity
+    location  dist_od (in DD), dist_fovea (in DD), distance to nearest vessel
+    context   local_contrast, bg_ratio
+- feed to the step-5 classifier; train on weak labels (grade 0 vs grades 3-4) with GroupKFold by image so no image scores itself.
+- verify every new feature WITHIN resolution strata before trusting it.
 
 Feature Engineering (for IRMA and Neovascularisation)
 - find regions of minor blood vessels and provided classification.
 - apply feature engineering on it to verify (1-true, 0-false) (d) segment of VESSELS
 
-Draw Segementation of Quadrants
+Draw Segmentation of Quadrants
+- anchor quadrants to the OD-fovea axis, not the frame axes.
 
 Apply count function to verify with 4-2-1 rule!
+- the textbook constant (>20 haemorrhages in each of 4 quadrants) does not transfer: measured, it fires on 0/70 images at EVERY grade including grade 3. It assumes a dilated seven-field exam; a single 45-degree field sees a different sample.
+- re-derive the constant against this detector (>3 gave 93% specificity at grades 0-2 and 64% sensitivity at grades 3-4) and store the raw per-quadrant counts UNTHRESHOLDED so it can be refitted without re-extracting.
