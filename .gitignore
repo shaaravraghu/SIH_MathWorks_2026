@@ -9,12 +9,24 @@
 
 # Dataset directories
 aptos2019-blindness-detection/
-data/
+data/*
 datasets/
 
-# But include populated feature CSVs
+# But include populated feature CSVs. `data/*`, not `data/`: git does not
+# descend into an excluded DIRECTORY, so a negation under `data/` never
+# matches -- the two lines below silently did nothing.
 !data/aptos_train_module1_features.csv
 !data/aptos_train_module2_features.csv
+
+# Module 3 pipeline output (Stage 1 -> Stage 2 -> Stage 3)
+!data/module3_stage1_features.csv
+!data/module3_stage2_features.csv
+!data/module3_dataset.csv
+!data/module3_stage1_calibration_scores.csv
+!data/module3_stage3_predictions.csv
+!data/module3_ids.txt
+!data/module3_splits.csv
+!data/module3_reserve.csv
 
 # Python
 __pycache__/
