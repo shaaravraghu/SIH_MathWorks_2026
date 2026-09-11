@@ -1,13 +1,20 @@
-# Running the Stage 1 / Stage 2 pipeline in MATLAB
+# Running the Stage 1 / Stage 2 / Stage 3 pipeline in MATLAB
 
 Command-by-command runbook for the MATLAB implementation in
 [`final_algorithms/matlab/`](.), driven from VS Code with the **MATLAB extension
 for Visual Studio Code** (MathWorks).
 
+| Stage | What it does | Entry point |
+|---|---|---|
+| **1** | image-quality gate and enhancement → 21 QC/confidence columns | `extractStage1Features` |
+| **2** | vessels, optic disc, fovea, lesions → 45 feature columns | `extractStage2Candidates` |
+| **3** | DR grading (ICDR 0–4) and the referable decision | `runModule3` |
+| — | batch Stage 1 → Stage 2 over the 500-image sample | `extractModule3Features` |
+
 > **Nothing in this pipeline has been executed yet.** The code was written to
 > spec and passed static checks only. Phase 0's exit criterion in
 > [`Module3_Plan.md`](../../notes/Implementation_Ideas/Final_Ideas/Module3_Plan.md)
-> — *"runs on 20 images; every column filled; values in range"* — is what §4
+> — *"runs on 20 images; every column filled; values in range"* — is what §3.3
 > below is for. Expect to fix real errors on the first run.
 
 ---
@@ -30,9 +37,9 @@ version('-release')
 
 | Toolbox | Used for | Fails without it |
 |---|---|---|
-| **Image Processing Toolbox** | `imgaussfilt`, `imboxfilt`, `imfilter`, `imresize`, `imrotate`, `imdilate`, `strel`, `regionprops`, `bwconncomp`, `bwdist`, `labelmatrix`, `adapthisteq`, `fspecial` | everything |
-| **Statistics and Machine Learning Toolbox** | `prctile` (every candidate threshold), `TreeBagger`/`predict` (step-5 lesion classifiers) | everything |
-| **Deep Learning Toolbox** | Module 3's MLP (§6.2 of the plan) — *not yet implemented* | nothing yet |
+| **Image Processing Toolbox** | `imgaussfilt`, `imboxfilt`, `imfilter`, `imresize`, `imrotate`, `imdilate`, `strel`, `regionprops`, `bwconncomp`, `bwdist`, `labelmatrix`, `adapthisteq`, `fspecial` | Stage 1, Stage 2 |
+| **Statistics and Machine Learning Toolbox** | `prctile` (every candidate threshold), `fitcensemble`/`fitrensemble`/`predict`, `tiedrank`, `fitglm` | Stage 1, Stage 2, Stage 3 |
+| **Deep Learning Toolbox** | Stage 3's MLP only (§6.2): `trainnet`, `dlnetwork`, `dlfeval`, `adamupdate` | `runModule3(Model="mlp")` — the forest baseline runs without it |
 
 Check what you have:
 
@@ -46,13 +53,44 @@ license('test', 'Statistics_Toolbox')
 ### 0.3 VS Code setup
 
 1. Install the **MATLAB** extension by MathWorks from the Extensions panel.
-2. Point it at your install if it doesn't autodetect — Settings → `MATLAB: Install Path`,
-   e.g. `C:\Program Files\MATLAB\R2024b`.
+2. Point it at your install if it doesn't autodetect — Settings → `MATLAB: Install Path`:
+
+   | OS | Typical path |
+   |---|---|
+   | Windows | `C:\Program Files\MATLAB\R2024b` |
+   | Linux | `/usr/local/MATLAB/R2024b` |
+   | macOS | `/Applications/MATLAB_R2024b.app` |
+
+   On Linux, `readlink -f $(which matlab)` gives the real location if MATLAB is
+   already on your `PATH` (strip the trailing `/bin/matlab`).
 3. Open the **repo root** as the workspace folder (`SIH_MathWorks_2026`), not a
    subfolder — the paths below are relative to it.
 4. Open a MATLAB terminal: Command Palette (`Ctrl+Shift+P`) → **MATLAB: Open Command Window**.
 
-All commands below are typed into that MATLAB command window.
+All commands below are typed into that MATLAB command window, except the shell
+blocks marked **bash** / **PowerShell**.
+
+### 0.3.1 Linux specifics
+
+Everything in this runbook works on Linux unchanged except where a shell block
+gives both forms. Four things differ in practice:
+
+- **The filesystem is case-sensitive.** MATLAB resolves a function by filename,
+  so `stage2Columns.m` answers to `stage2Columns` but *not* `stage2columns`.
+  On Windows the wrong case silently works, then breaks once the repo is cloned
+  to Linux. All 130 `.m` files here were checked — every filename matches its
+  `function` declaration and every cross-file call uses the exact case, so the
+  tree is Linux-safe as written. This is a hazard to respect when **editing**,
+  and the first thing to check if a function is "undefined" on Linux but fine
+  on Windows.
+- **Use forward slashes.** `fullfile` normalises them on both platforms, so
+  every path in this document is already portable; only the absolute `cd` at
+  §1 needs changing.
+- **`matlab -batch` needs no display.** It runs headless by default, so no
+  `xvfb` wrapper is needed for the batch runs. Only `imshow` (§2.4) wants a
+  display — skip it over SSH, or save with `imwrite` instead.
+- **`python` may not exist as a command.** Most distributions ship only
+  `python3`. The shell blocks below use `python3` in the bash form.
 
 ### 0.4 The APTOS dataset (not in the repo)
 
@@ -72,6 +110,24 @@ SIH_MathWorks_2026/
 That exact folder name is the default both batch scripts expect. A different
 location is fine — pass `AptosDir=` explicitly (§3).
 
+With the Kaggle CLI, from the repo root:
+
+```bash
+# Linux / macOS
+pip install kaggle                      # needs ~/.kaggle/kaggle.json
+kaggle competitions download -c aptos2019-blindness-detection
+unzip -q aptos2019-blindness-detection.zip -d aptos2019-blindness-detection
+ls aptos2019-blindness-detection/train_images | wc -l     # expect 3662
+```
+
+```powershell
+# Windows (PowerShell)
+pip install kaggle
+kaggle competitions download -c aptos2019-blindness-detection
+Expand-Archive aptos2019-blindness-detection.zip -DestinationPath aptos2019-blindness-detection
+(Get-ChildItem aptos2019-blindness-detection\train_images).Count   # expect 3662
+```
+
 > **Do not overwrite `data/aptos_train_module1_features.csv`.** It is the
 > previous implementation's output and the batch script is written never to
 > touch it.
@@ -80,18 +136,28 @@ location is fine — pass `AptosDir=` explicitly (§3).
 
 ## 1. Put the code on the MATLAB path
 
-From the repo root:
+From the repo root — only the `cd` differs by platform:
 
 ```matlab
+% Windows
 cd 'C:\Users\Sowjanya\Desktop\SIH_MathWorks_2026'
+
+% Linux / macOS
+cd '~/SIH_MathWorks_2026'
+
+% either platform, once you are in the right place:
 addpath('final_algorithms/matlab')
 addpath('final_algorithms/matlab/stage1')
 addpath('final_algorithms/matlab/stage2')
+addpath('final_algorithms/matlab/stage3')
 ```
 
-`extractModule3Features` adds `stage1/` and `stage2/` itself, so for the batch
-run only the first `addpath` is strictly needed. Add all three when calling the
-stage functions directly.
+`extractModule3Features` adds `stage1/` and `stage2/` itself and `runModule3`
+adds `stage3/`, so for the batch runs only the first `addpath` is strictly
+needed. Add all four when calling the stage functions directly.
+
+If you started MATLAB from the repo root already, `cd` is unnecessary —
+`pwd` will confirm.
 
 Verify the entry points resolve and nothing is shadowed:
 
@@ -192,8 +258,13 @@ report.quadrants.four_two_one          % the re-derived 4-2-1 flag (>3, not >20)
 report.nvd_nve.nvd_count
 report.nvd_nve.nve_count
 
-imshow(report.vessels.matched_filter_mask)
+imshow(report.vessels.matched_filter_mask)          % needs a display
+imwrite(report.vessels.matched_filter_mask, 'vessels.png')   % headless / over SSH
 ```
+
+`imshow` is the only command in this runbook that wants a graphical display.
+Over SSH or under `matlab -batch`, use the `imwrite` line instead and copy the
+file back (`scp`).
 
 ---
 
@@ -260,7 +331,13 @@ Python has no effect on the MATLAB feature values. Regenerate with a different
 seed if you need to:
 
 ```powershell
-python final_algorithms/python/select_module3_ids.py --seed 0
+# Windows (PowerShell)
+python final_algorithms\python\select_module3_ids.py --seed 0
+```
+
+```bash
+# Linux / macOS
+python3 final_algorithms/python/select_module3_ids.py --seed 0
 ```
 
 Overriding the default is still just a name-value argument (§3.5) — useful for
@@ -328,12 +405,29 @@ extractModule3Features( ...
     Seed       = 0)
 ```
 
-Run it in the background from VS Code's own terminal (not the MATLAB window) if
-you want to keep working:
+Run it headless from VS Code's own terminal (not the MATLAB window) if you want
+to keep working. `matlab -batch` needs no display on either platform:
 
 ```powershell
-matlab -batch "cd('C:\Users\Sowjanya\Desktop\SIH_MathWorks_2026'); addpath('final_algorithms/matlab'); extractModule3Features(IdsFile='data/module3_ids.txt')"
+# Windows (PowerShell)
+matlab -batch "cd('C:\Users\Sowjanya\Desktop\SIH_MathWorks_2026'); addpath('final_algorithms/matlab'); extractModule3Features()"
+
+# ... and detached, with a log:
+Start-Process matlab -ArgumentList '-batch', "cd('C:\Users\Sowjanya\Desktop\SIH_MathWorks_2026'); addpath('final_algorithms/matlab'); extractModule3Features()" -RedirectStandardOutput extract.log -NoNewWindow
 ```
+
+```bash
+# Linux / macOS
+cd ~/SIH_MathWorks_2026
+matlab -batch "addpath('final_algorithms/matlab'); extractModule3Features()"
+
+# ... and detached, surviving logout, with a log:
+nohup matlab -batch "addpath('final_algorithms/matlab'); extractModule3Features()" > extract.log 2>&1 &
+tail -f extract.log          # watch progress
+```
+
+A 500-image run is long. On Linux, `tmux new -s extract` (or `screen`) before
+launching is more robust than `nohup` if you are on SSH and want to reattach.
 
 ### 3.6 Stage 1 rejection tally
 
@@ -425,23 +519,152 @@ modelInputs = cols(cellfun(@(c) strcmp(roles(c), 'MODEL'), cols));
 
 ---
 
-## 5. Troubleshooting
+## 5. Stage 3 — grading (Module 3, Phases 4–8)
+
+Stage 3 lives in [`stage3/`](stage3/) and turns the feature table into a DR
+grade. Add it to the path (`runModule3` does this itself):
+
+```matlab
+addpath('final_algorithms/matlab/stage3')
+```
+
+### 5.1 What it needs first
+
+`data/module3_dataset.csv` **and** `data/module3_candidates/*.mat`, both from
+the §3 batch run. The candidate cache is not optional: Stage 3 refits the
+lesion classifiers inside every fold, and that needs the per-candidate
+features, not the summary row.
+
+### 5.2 The runs
+
+```matlab
+runModule3()                       % Phase 4: RandomForest baseline (§6.3)
+runModule3(Model="mlp")            % Phase 5: the ordinal-regression MLP (§6.2)
+runModule3(Ablation=true)          % Phase 6: feature-block walk (§8)
+runModule3(Model="forest", Test=true)   % Phases 7-8: freeze rules, then test ONCE
+```
+
+Headless, from a shell. The ablation refits five folds per block across seven
+blocks, so it is the one worth detaching:
+
+```bash
+# Linux / macOS
+cd ~/SIH_MathWorks_2026
+matlab -batch "addpath('final_algorithms/matlab/stage3'); runModule3(Model=\"forest\")"
+
+nohup matlab -batch "addpath('final_algorithms/matlab/stage3'); runModule3(Ablation=true)" \
+      > ablation.log 2>&1 &
+tail -f ablation.log
+```
+
+```powershell
+# Windows (PowerShell)
+matlab -batch "cd('C:\Users\Sowjanya\Desktop\SIH_MathWorks_2026'); addpath('final_algorithms/matlab/stage3'); runModule3(Model=""forest"")"
+```
+
+> Quoting differs: bash needs `\"` inside the double-quoted `-batch` string,
+> PowerShell needs `""`. Using `Model='forest'` with single quotes sidesteps it
+> on both — MATLAB accepts a char vector wherever the arguments block declares
+> a string.
+
+The Python equivalents (same plan, see §5.5 for where they differ):
+
+```bash
+python3 final_algorithms/python/run_module3.py --model forest
+python3 final_algorithms/python/run_module3.py --model mlp
+python3 final_algorithms/python/run_module3.py --ablation
+python3 final_algorithms/python/run_module3.py --model forest --test
+```
+
+Options:
+
+| Option | Default | Purpose |
+|---|---|---|
+| `Model` | `"forest"` | `"forest"` (§6.3 baseline) or `"mlp"` (§6.2) |
+| `Block` | `"6a_measured_core"` | Phase 6 block to run through; D5 starts at 6a |
+| `AllFeatures` | `false` | all 38 inputs at once — D5 advises against |
+| `Ablation` | `false` | walk every block in order |
+| `Test` | `false` | evaluate the held-out 75 — **once** |
+| `Calibration` | `"platt"` | or `"isotonic"` |
+| `RefitLesions` | `true` | `false` is **leaky**; QC smoke runs only |
+
+### 5.3 The two rules the code enforces for you
+
+**Lesion classifiers are refitted inside every fold (§4.1).** They train on
+weak labels taken from the image grade, so a classifier that scores an image it
+trained on puts that image's grade into its own features. This already happened
+once here — the previous microaneurysm classifier trained on 250 images and all
+250 sat inside the 309-row table. `RefitLesions=false` skips the refit and is
+leaky by construction; it prints a warning and exists only for fast smoke runs.
+
+**Every metric is also reported within resolution strata (§4.3).** Pooled
+figures partly measure which camera took the picture — even the Module 2
+features alone identify the camera 66% of the time against a 16.7% chance
+baseline. `runModule3` prints the within-resolution number and marks it as the
+honest one; the Phase 6 ablation keeps a block only if *that* number improves.
+
+### 5.4 Reading the output
+
+```
+  QWK pooled            0.7821
+  QWK within resolution 0.7503   <- the honest number (§4.3)
+  referable sens/spec   0.902 / 0.741
+  grade-4 recall        0.267   <- reported on its own line (§8)
+```
+
+Three things the plan tells you to expect rather than treat as bugs:
+
+- **Grade-4 recall will likely be poor.** The previous model predicted grade 4
+  for 3 of 61 true grade-4 images. The NV split (S2-14/15) and the 4-2-1
+  composite (S2-40) exist to fix that — report it on its own line either way.
+- **Specificity at 90% sensitivity may miss the 85% target.** That target
+  belongs to the fused system; features alone previously reached 75.4%.
+- **The forest may beat the MLP.** On 309 rows it did, decisively, within
+  resolution strata (AUC 0.879 vs 0.813). D4 says the network is adopted only
+  if it wins on the within-resolution metrics.
+
+### 5.5 MATLAB vs Python for Stage 3
+
+The **MATLAB MLP is the plan's architecture** and the Python one is not.
+[`fitGradingMlp.m`](stage3/fitGradingMlp.m) implements §6.2 as written —
+dropout 0.3 on both hidden layers, He initialisation, and the §6.2.2
+class-weighted MSE via a custom `dlnetwork` training loop when the weights
+aren't flat. scikit-learn's `MLPRegressor` has no dropout layer, no He
+initialiser and no per-row sample weights, so the Python version documents all
+three as deviations. The RandomForest baseline matches closely in both.
+
+---
+
+## 6. Troubleshooting
 
 | Symptom | Cause |
 |---|---|
 | `Unrecognized function 'prctile'` | Statistics and Machine Learning Toolbox missing |
 | `Too many input arguments` on `prctile` | MATLAB older than R2022a — `"Method","inclusive"` unsupported |
 | `Undefined function 'imboxfilt'` | Image Processing Toolbox missing |
-| `which -all` shows two hits for one name | a stray copy on the path shadowing `stage1/` or `stage2/` |
+| `Undefined function 'trainnet'` / `dlnetwork` | Deep Learning Toolbox missing — only `runModule3(Model="mlp")` needs it; the forest runs without |
+| `which -all` shows two hits for one name | a stray copy on the path shadowing `stage1/`, `stage2/` or `stage3/` |
 | `Cannot open ... for writing` | `data/` doesn't exist, or a CSV is open in Excel |
 | Warning: *extracting ALL 3662 images* | `data/module3_ids.txt` missing — run `select_module3_ids.py` (§3.2). Stop the run; it is not the pilot sample |
 | Run covers fewer than 500 images | Stage 1 rejected some — backfill from the reserve (§3.7) |
 | Every image `rejected by Stage 1` | `fovMask` empty — usually a wrong `AptosDir` or non-fundus images |
 | `od_fovea_dist_dd` implausible on most images | optic-disc localisation failing; it is a QC column for exactly this |
 
+**Linux-specific**
+
+| Symptom | Cause |
+|---|---|
+| `Undefined function` on Linux for something that works on Windows | **filename case.** The Linux filesystem is case-sensitive; MATLAB resolves functions by exact filename (§0.3.1) |
+| `python: command not found` | use `python3` — most distributions ship no bare `python` |
+| `matlab: command not found` | not on `PATH`. Use the full path, or `sudo ln -s /usr/local/MATLAB/R2024b/bin/matlab /usr/local/bin/matlab` |
+| `imshow` errors or hangs over SSH | no display. Skip §2.4's `imshow`, or write the image with `imwrite` and copy it back |
+| Background run dies at logout | use `nohup ... &`, or `tmux`/`screen` (§3.5) |
+| `Error using load ... not found` in Stage 3 | candidate cache path case, or the Phase 2 run wrote to a different `OutDir` |
+| `Permission denied` writing to `data/` | repo cloned as root, or a read-only mount — `chown -R $USER:$USER .` |
+
 ---
 
-## 6. What this MATLAB run is, and is not
+## 7. What this MATLAB run is, and is not
 
 It is a faithful implementation of the algorithm specified in
 [`Stage_1_CNN`](../../notes/Implementation_Ideas/Final_Ideas/Stage_1_CNN) and
