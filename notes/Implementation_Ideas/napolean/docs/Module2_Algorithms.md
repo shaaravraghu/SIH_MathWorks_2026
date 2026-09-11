@@ -656,15 +656,30 @@ the nerve fibre layer, and the vessel map already supplies that orientation.
 
 ### 7. Neovascularization
 
-| Candidate | Strength | Weakness | |
-|---|---|---|---|
-| **vessel-map texture in sliding windows** | reuses the vessel map | vessel map is not yet reliable | R |
-| tortuosity/fractal descriptors | physically motivated | no threshold available | R |
-| CNN on vessel patches | best published | needs labels; only 295 grade-4 images | R |
+| Candidate | Measured (within-stratum rho) | |
+|---|---|---|
+| **fine-scale vessel excess** — responds to L=9/W=11 but not L=31/W=31 | **+0.356**, and +0.31…+0.41 at EVERY sharpness | **CHOSEN** |
+| branchpoints per unit skeleton length, max over 1 DD | +0.349, but **flips to −0.383** in one stratum | R |
+| density extreme (p99.5) instead of mean | **−0.391** — consistently wrong-signed | **rejected** |
+| vessel density >2 DD from the OD | +0.210, weak | R |
+| vessel density × orientation incoherence | −0.307…+0.279, incoherent | **rejected** |
+| skeleton-length tortuosity proxy | collapses to ~0 everywhere | **rejected** |
 
-**Verdict: build it, do not trust it.** This is the component APTOS supports
-least — no NV annotations exist anywhere in the dataset. Report it as
-unvalidated.
+**Verdict: fine-scale excess.** Neovascular vessels are thin, so they respond to
+a fine line detector and not a coarse one:
+
+```
+fine   = line_detector(green, L=9,  W=11)
+coarse = line_detector(green, L=31, W=31)
+excess = (fine > p92) AND NOT dilate(coarse > p92, 5x5)
+```
+
+Unexpectedly this is the **most robust feature in Module 2** — the only one
+whose correlation survives on a random sample rather than the sharpest images.
+
+**Still: build it, do not trust it.** APTOS has no NV annotations anywhere and
+only ~295 grade-4 images, so `nv_fine` is validated against *grade*, never
+against neovascularization. Report it as unvalidated.
 
 ### 8. Quadrants / 4-2-1 rule
 
@@ -676,22 +691,41 @@ unvalidated.
 **Verdict: OD–fovea axis**, once both localisers are trusted. Note this
 deliberately differs from [B]'s `splitRegions`.
 
+**The clinical constant does not transfer.** The rule is ">20 haemorrhages in
+each of four quadrants". At >20 it fires on **0/70 images at every grade**,
+including grade 3. That constant assumes a clinician counting on a dilated
+seven-field exam; a detector on a single 45° field sees a different sample of
+the retina. Re-derived against this detector, **>3** gives 93% specificity at
+grades 0–2 and 64% sensitivity at grades 3–4 — **on sharp images only**. On a
+random sample the rule fires on 4/12 grade-0 images and is not usable.
+
+Store `q_min` and `q_max` unthresholded so the constant can be refitted without
+re-extracting.
+
 ### Summary — confidence by component
 
-| Component | Verdict | Confidence |
-|---|---|---|
-| Optic disc | disc-mean on green, r ≤ 0.6 R | **measured**, but failure rate unknown |
-| Vessels | Frangi, scales 2.7–10 px | **measured as not-yet-working** |
-| Fovea | geometric + avascularity | reasoned |
-| Microaneurysms | morphological closing + classifier | reasoned |
-| Exudates | reconstruction after OD mask | reasoned |
-| Haemorrhages | MA pipeline + size split | reasoned |
-| Neovascularization | vessel texture | reasoned, weakest |
-| Quadrants | OD–fovea axis | reasoned |
+**All eight are now implemented and measured.** This section was written before
+testing; the verdicts below replace the original design guesses.
 
-**Two of eight are measured. Six are designed.** Nothing in Module 2 is
-production-ready, and vessels — which gate half the pipeline — are actively
-known to be broken at present settings.
+| Component | Chosen algorithm | Measured (sharp / random) |
+|---|---|---|
+| Optic disc | disc-mean on **raw** green, r ≤ 0.6 R | bright 3.02, ~10% hidden failures |
+| Vessels | line detector L=21/W=21, 11% cov, len≥40, gap bridging | 80.7% in one tree, 8 comps |
+| Fovea | CS darkness − 3.0× vessel density, 2.1–2.9 DD annulus | 2.58 DD; `fovea_vdens` degenerate |
+| Microaneurysms | closing L=15 → **shape-only classifier** | AUC 0.742 |
+| Exudates | dynamic threshold → **8 px min-area** | +0.503 / **+0.10…+0.34** |
+| Haemorrhages | **closing L=41 → classifier @ 0.8** | +0.553 / **+0.248** |
+| Neovascularization | **fine-scale vessel excess** | +0.356 / **+0.319** — most robust |
+| Quadrants | OD–fovea axis, `q_min > 3` | 93% spec / **reverses sign on random** |
+
+**Eight of eight measured. None production-ready.** The geometric stages
+(vessels, optic disc, fovea) work but have unmeasured true error rates — APTOS
+has no ground truth, so every number is a correlation with grade, not an
+accuracy. The four *lesion* measures were tuned on the sharpest 14 images per
+grade and mostly do not survive a random sample.
+
+**The single highest-value open task** is a stricter `varLapNorm` gate for the
+lesion detectors — see [Module2_Results.md](Module2_Results.md).
 
 ---
 
@@ -709,17 +743,35 @@ known to be broken at present settings.
 | Exudates | **optic disc not masked** | a false exudate in every image | mask 1.2 × OD_R — non-negotiable |
 | Exudates | CLAHE applied upstream | 20% contrast loss | [F]: measurement stream gets no CLAHE |
 | Haemorrhages | size split miscalibrated | MAs and haemorrhages swap | recheck px/um after any change to `targetR` |
+| Haemorrhages | classifier threshold left at 0.5 | keeps ~100% of candidates; rule fires on grade 0 | use **0.8** — the point where the grade-0 median reaches zero |
+| Quadrants | textbook constant of 20 copied verbatim | rule fires on nothing at any grade | re-derive against the detector; store `q_min` raw |
+| **All lesions** | **tuned/reported on the sharpest images** | **rho halves or reverses on a random sample** | **stratify by `varLapNorm` band, always report which band** |
 | All | image not radius-normalised | every size threshold is wrong | run [A] first, always |
 
 ---
 
 ## Next
 
-Implementation order, given APTOS-only:
+All eight components are implemented in
+[`extract_module2_features.py`](../../../../code_testing/python/extract_module2_features.py)
+and documented in [Module2_CSV_Schema.md](Module2_CSV_Schema.md). What remains:
 
-1. **Vessels (Frangi)** — no training data needed, gates everything else,
-   validated by "does removing them improve the lesion→grade signal?"
-2. **Fovea** — cheap once vessels exist, and completes the OD–fovea axis
-3. **Microaneurysms** — the long pole; budget the most time
-4. **Exudates**, then **haemorrhages** — reuse the machinery from 1 and 3
-5. **Neovascularization** — last, and least supportable on APTOS
+1. **Derive a stricter `varLapNorm` gate for the lesion detectors.** Outranks
+   everything else — Module 1's gate passes images on which `q_min` and `q_max`
+   reverse sign. Accepting an image for storage and accepting it for lesion
+   counting are different decisions.
+2. **Re-measure every lesion correlation per sharpness band** once that gate
+   exists. The numbers in these docs are upper bounds.
+3. **Run the full 3,662-image extraction** (~3.3 h) and refit the 4-2-1
+   constant and the classifier threshold on real distributions rather than 70
+   images.
+4. **Fix or drop `fovea_vdens`** — it is exactly 0.0 on every image.
+5. **Apply the candidate classifier to microaneurysms in the extractor** — it
+   is measured but only `ma_count_INVALID` is currently written.
+6. **MATLAB verification.** Zero numbers in Module 2 have been reproduced in
+   MATLAB.
+
+**What this project cannot do on APTOS, at all:** validate neovascularization,
+venous beading or IRMA — no annotations exist. Two of the three pathways to
+grade 3 in the 4-2-1 rule are therefore unreachable, and even a perfect
+haemorrhage counter reconstructs only one of them. FGADR is the only route.

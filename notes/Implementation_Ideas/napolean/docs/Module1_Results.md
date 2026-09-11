@@ -3,7 +3,7 @@
 What the features actually do, measured on the **full APTOS training set**
 (3,662 images; `fov_ok` on 3,660 = 99.95%).
 
-Source: [`data/aptos_train_module1_features.csv`](../../data/aptos_train_module1_features.csv).
+Source: [`data/aptos_train_module1_features.csv`](../../../../data/aptos_train_module1_features.csv).
 Stage detail: [[A]](Module1_A_FOV_Detection.md) · [[B]](Module1_B_Focus_Metrics.md) · [[C]](Module1_C_Illumination.md)
 
 > **[C] backfill complete.** All figures below are from the full 3,662 rows

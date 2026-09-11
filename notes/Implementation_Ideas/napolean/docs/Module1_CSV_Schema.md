@@ -1,7 +1,10 @@
 # APTOS Module 1 Feature CSV — Data Dictionary
 
+> Module 2 adds 17 further columns to this same file — see
+> [Module2_CSV_Schema.md](Module2_CSV_Schema.md).
+
 **File:** `data/aptos_train_module1_features.csv`
-**Generator:** [`python/extract_module1_features.py`](../../python/extract_module1_features.py)
+**Generator:** [`python/extract_module1_features.py`](../../../../code_testing/python/extract_module1_features.py)
 **Rows:** one per APTOS training image (3,662), `train.csv` duplicated with 51 extra columns.
 
 ```bash

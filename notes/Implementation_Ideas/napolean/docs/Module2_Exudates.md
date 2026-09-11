@@ -111,6 +111,12 @@ exactly the error that broke microaneurysms in round 1. Adding a single
 | **`exu_n`** | **1.5** | 13 | 29.5 | **47** | 36 | 0.698 | **+0.503** |
 | **`exu_area`** | 0.0 | 0.1 | 0.2 | 0.4 | 0.2 | 0.688 | **+0.484** |
 
+⚠ **This is a sharpest-14-images-per-grade number and it does not reproduce.**
+On a random gate-passed sample `exu_n` measures **+0.200**, and across
+sharpness terciles **+0.102 / +0.344 / +0.202** (sharp / mid / blurry). See the
+warning at the top of [Module2_Results.md](Module2_Results.md). Treat +0.503 as
+an upper bound obtained on favourable images, not as expected performance.
+
 **ρ = +0.503 within strata is the strongest correlation measured anywhere in
 Module 2.** And the counts are now clinically plausible — 1.5 exudates at grade 0
 rising to 47 at grade 3, against 1,244–2,279 before.

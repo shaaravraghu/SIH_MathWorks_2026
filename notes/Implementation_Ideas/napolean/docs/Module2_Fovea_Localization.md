@@ -1,5 +1,28 @@
 # Module 2, Step 3 — Fovea Localization
 
+> ## `fovea_vdens` — fixed, but it is a failure flag, not a feature
+>
+> **The bug.** It reported vessel density *at the chosen pixel*. The search
+> maximises `centre-surround darkness − 3.0 × vessel density`, so the argmax
+> always lands on a strictly zero-vessel pixel and the column was **identically
+> 0.0 on every image** — structurally guaranteed, not measured.
+>
+> **The fix.** It now measures vessel fraction over the **foveal avascular zone**
+> (500 µm = 34 px radius), which does not depend on the search penalty.
+>
+> **What it does now:** median **0.00**, max **27.97**, and under 0.5% of images
+> are non-zero. A healthy FAZ genuinely has no vessels, so ~0 is the *correct*
+> answer almost everywhere — but that makes the column near-constant and
+> **useless as a graded feature**. Its real value is as a **mislocalisation
+> flag**: `fovea_vdens > 0` means the localiser put the fovea somewhere
+> vascular, i.e. probably wrong. Use it that way and nothing else.
+>
+> The earlier "vd 3.8% vs 14.5%" figure was measured on a *candidate region*,
+> not at the final point — it does not describe this column.
+>
+> `fovea_od_dd` is the other check — but note it is constrained to 2.1–2.9 by the
+> search annulus, so a value in range **is the constraint, not a validation**.
+
 **Purpose:** find the fovea — the avascular pit at the centre of the macula.
 
 **Code:** Python reference in the session scratchpad (`m2_fovea.py`,

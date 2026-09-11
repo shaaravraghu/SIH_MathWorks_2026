@@ -1,7 +1,7 @@
 # Module 1 — Complete Feature Reference & Verdict
 
-Every feature produced by [`[A] detectFOV`](../../matlab/detectFOV.m) and
-[`[B] focusMetrics`](../../matlab/focusMetrics.m), with **measured** values and a
+Every feature produced by [`[A] detectFOV`](../../../../code_testing/matlab/detectFOV.m) and
+[`[B] focusMetrics`](../../../../code_testing/matlab/focusMetrics.m), with **measured** values and a
 ranked recommendation.
 
 **Evidence base:**
@@ -11,7 +11,7 @@ ranked recommendation.
 | 150 APTOS images, 30 per DR grade | real-world distributions, disease correlation, code-path coverage |
 | Controlled sweeps on one reference image | blur monotonicity, noise sensitivity, contrast invariance, partial blur |
 
-Reproduce with [`benchmarkModule1.m`](../../matlab/benchmarkModule1.m).
+Reproduce with [`benchmarkModule1.m`](../../../../code_testing/matlab/benchmarkModule1.m).
 
 > **Status warning.** Every number below comes from a **Python reference
 > implementation** of the same logic. The MATLAB `.m` files were not executable at

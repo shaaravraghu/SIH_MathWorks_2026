@@ -2,7 +2,7 @@
 
 **Purpose:** decide whether the image is in focus, and if not, *where* and *how badly*.
 
-**Code:** [`matlab/focusMetrics.m`](../matlab/focusMetrics.m)
+**Code:** [`matlab/focusMetrics.m`](../../../../code_testing/matlab/focusMetrics.m)
 
 **Depends on:** [`[A]` FOV detection](Module1_A_FOV_Detection.md) — every metric
 here is computed inside `fov.maskMeasure`.
@@ -68,7 +68,7 @@ differ in three ways that matter:
 2. whether they are **invariant to contrast**,
 3. what they **cancel** (some structures read as zero when they shouldn't).
 
-**Prerequisite:** run [`normalizeFundus`](../matlab/normalizeFundus.m) first.
+**Prerequisite:** run [`normalizeFundus`](../../../../code_testing/matlab/normalizeFundus.m) first.
 Every metric here is scale-dependent — a "sharp" gradient at R=1400 px is a
 different number from the same eye at R=436 px. Cross-image comparison is only
 meaningful once the retinal radius is fixed.

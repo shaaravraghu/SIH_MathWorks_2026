@@ -3,8 +3,8 @@
 **Purpose:** decide whether there was enough light, delivered evenly, to record
 the retina — and whether what was lost is recoverable.
 
-**Code:** [`matlab/illuminationMetrics.m`](../matlab/illuminationMetrics.m),
-[`python/extract_module1_features.py`](../../python/extract_module1_features.py)
+**Code:** [`matlab/illuminationMetrics.m`](../../../../code_testing/matlab/illuminationMetrics.m),
+[`python/extract_module1_features.py`](../../../../code_testing/python/extract_module1_features.py)
 
 **Depends on:** [`[A]` FOV detection](Module1_A_FOV_Detection.md) — every metric
 here is computed inside `fov.maskMeasure`.

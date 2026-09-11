@@ -16,7 +16,16 @@ import pandas as pd
 M2_COLS = ["vessel_pct", "vessel_comps", "vessel_largest_pct", "vessel_width_med",
            "vessel_skel_len", "vessel_frag", "vessel_coh",
            "od_x", "od_y", "od_bright", "od_struct",
-           "ma_count_INVALID", "m2_ok", "m2_reason", "m2_ms"]
+           "fovea_x", "fovea_y", "fovea_vdens", "fovea_od_dd",
+           "exu_n", "exu_area",
+           "ma_raw", "ma_n",
+           "hem_raw", "hem_n", "q_min", "q_max", "rule421",
+           "nv_fine", "nv_fine_max",
+           "sharp_ok", "ma_count_INVALID", "m2_ok", "m2_reason", "m2_ms"]
+
+# columns worth a distribution summary after the merge
+SUMMARY = ["vessel_largest_pct", "od_bright", "fovea_od_dd", "fovea_vdens",
+           "exu_n", "ma_n", "hem_n", "q_min", "q_max", "nv_fine"]
 
 
 def main():
@@ -54,13 +63,26 @@ def main():
     if filled:
         sub = out[out.m2_ok == 1]
         print("\nsummary of the filled rows:")
-        for c in ["vessel_pct", "vessel_comps", "vessel_largest_pct",
-                  "vessel_width_med", "od_bright", "od_struct", "ma_count_INVALID"]:
-            if c in sub.columns:
-                v = pd.to_numeric(sub[c], errors="coerce").dropna()
-                if len(v):
-                    print(f"   {c:>20}  min {v.min():>8.2f}  med {v.median():>8.2f}"
-                          f"  max {v.max():>8.2f}")
+        print(f"   {'column':>20} {'min':>9} {'median':>9} {'max':>9}   "
+              f"median by grade 0..4")
+        for c in SUMMARY:
+            if c not in sub.columns:
+                continue
+            v = pd.to_numeric(sub[c], errors="coerce")
+            if not v.notna().any():
+                continue
+            by = [pd.to_numeric(sub[sub.diagnosis == k][c], errors="coerce").median()
+                  for k in range(5)]
+            bytxt = " ".join(f"{b:>6.1f}" if pd.notna(b) else "     -" for b in by)
+            print(f"   {c:>20} {v.min():>9.2f} {v.median():>9.2f} {v.max():>9.2f}"
+                  f"   {bytxt}")
+
+        if "sharp_ok" in sub.columns:
+            s = pd.to_numeric(sub.sharp_ok, errors="coerce")
+            print(f"\n   sharp_ok: {int(s.sum())}/{int(s.notna().sum())} rows pass "
+                  f"the stricter lesion gate ({100*s.mean():.0f}%)")
+            print("   Lesion columns (exu_n, ma_n, hem_n, q_min, q_max, rule421) are "
+                  "only\n   trustworthy where sharp_ok == 1 -- see Module2_CSV_Schema.md.")
 
 
 if __name__ == "__main__":

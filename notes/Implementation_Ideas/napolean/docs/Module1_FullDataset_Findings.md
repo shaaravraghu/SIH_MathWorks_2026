@@ -1,7 +1,7 @@
 # Module 1 — Full-Dataset Findings (3,662 APTOS images)
 
 Results from running [A]+[B] over the **entire** APTOS 2019 training set.
-Source data: [`data/aptos_train_module1_features.csv`](../../data/aptos_train_module1_features.csv),
+Source data: [`data/aptos_train_module1_features.csv`](../../../../data/aptos_train_module1_features.csv),
 schema in [Module1_CSV_Schema.md](Module1_CSV_Schema.md).
 
 **These results supersede several conclusions drawn from the earlier

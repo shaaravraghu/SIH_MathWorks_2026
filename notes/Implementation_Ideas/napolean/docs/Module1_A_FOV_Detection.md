@@ -3,8 +3,8 @@
 **Purpose:** find the circular retinal region in a fundus image, and produce the
 mask that every downstream measurement depends on.
 
-**Code:** [`matlab/detectFOV.m`](../matlab/detectFOV.m),
-[`matlab/normalizeFundus.m`](../matlab/normalizeFundus.m)
+**Code:** [`matlab/detectFOV.m`](../../../../code_testing/matlab/detectFOV.m),
+[`matlab/normalizeFundus.m`](../../../../code_testing/matlab/normalizeFundus.m)
 
 **Worked example throughout:** `notes/Diabetic_Retinopathy_Concept/Fovea_&_Optic_Disk.jpg`
 (969 x 916 px)
@@ -668,7 +668,7 @@ gate.**
 
 ## Radius normalization
 
-The payoff of [A]. See [`matlab/normalizeFundus.m`](../matlab/normalizeFundus.m).
+The payoff of [A]. See [`matlab/normalizeFundus.m`](../../../../code_testing/matlab/normalizeFundus.m).
 
 ```matlab
 s = targetR / fov.radius;

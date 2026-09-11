@@ -1,5 +1,23 @@
 # Module 2, Step 4 — Microaneurysm Detection
 
+> **Sharpness caveat.** Like every lesion measure in Module 2, the numbers here
+> were obtained on the 14 sharpest images per grade and are upper bounds — see
+> the warning at the top of [Module2_Results.md](Module2_Results.md).
+>
+> **The classifier is now wired in — use `ma_n`.** The extractor writes
+> `ma_raw` (candidates) and **`ma_n`** (classifier survivors, probability
+> ≥ 0.7), alongside the legacy `ma_count_INVALID`, which is the threshold stage
+> with no classifier and correlates −0.117 with grade.
+>
+> **`ma_n` is the best-evidenced lesion feature in Module 2**: candidate AUC
+> 0.729, within-stratum rho **+0.508**, medians 0 / 33.5 / 44.5 / 112.5 / 108.5
+> across grades 0–4 — and measured on 250 images sampled across **all ten
+> sharpness deciles**, not a favourable selection.
+>
+> The threshold 0.7 is the **lowest** probability at which the grade-0 median
+> count is 0, a criterion fixed before the sweep. 0.9 would report +0.593, but
+> that is a selected maximum and therefore optimistic.
+
 **Purpose:** count microaneurysms. Grade 1 is *defined* as "microaneurysms
 only", so this component decides whether early disease is detectable at all.
 
