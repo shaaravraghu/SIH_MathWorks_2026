@@ -11,11 +11,14 @@ for Visual Studio Code** (MathWorks).
 | **3** | DR grading (ICDR 0–4) and the referable decision | `runModule3` |
 | — | batch Stage 1 → Stage 2 over the 500-image sample | `extractModule3Features` |
 
-> **Nothing in this pipeline has been executed yet.** The code was written to
-> spec and passed static checks only. Phase 0's exit criterion in
+> **Execution status.** Verified on R2024a: every Stage 3 function runs, both
+> Stage 3 training paths train, and Stage 2's filter/percentile path runs on a
+> synthetic image. Stage 1 has been run end-to-end on one synthetic fundus.
+> **Not yet run on real APTOS images** — the dataset isn't downloaded, so
+> Phase 0's exit criterion in
 > [`Module3_Plan.md`](../../notes/Implementation_Ideas/Final_Ideas/Module3_Plan.md)
-> — *"runs on 20 images; every column filled; values in range"* — is what §3.3
-> below is for. Expect to fix real errors on the first run.
+> (*"runs on 20 images; every column filled; values in range"*) is still open;
+> §3.3 is for that. Expect to fix some real errors on the first image run.
 
 ---
 
@@ -23,9 +26,8 @@ for Visual Studio Code** (MathWorks).
 
 ### 0.1 MATLAB release
 
-**R2021a or newer** for Stages 1–2 and the RandomForest path of Stage 3
-(`name=value` call syntax and `arguments` blocks).
-**R2024a or newer** for `runModule3(Model="mlp")`, which uses `trainnet`.
+**R2021a or newer** for Stages 1–2 (`name=value` call syntax and `arguments`
+blocks). **R2024a or newer** for Stage 3, which uses `trainnet`.
 
 Verified working on **R2024a** — Stage 2's filter/percentile path and every
 Stage 3 function have been executed on this machine.
@@ -48,7 +50,7 @@ version('-release')
 |---|---|---|
 | **Image Processing Toolbox** | `imgaussfilt`, `imboxfilt`, `imfilter`, `imresize`, `imrotate`, `imdilate`, `strel`, `regionprops`, `bwconncomp`, `bwdist`, `labelmatrix`, `adapthisteq`, `fspecial` | Stage 1, Stage 2 |
 | **Statistics and Machine Learning Toolbox** | `prctile` (every candidate threshold), `fitcensemble`/`fitrensemble`/`predict`, `tiedrank`, `fitglm` | Stage 1, Stage 2, Stage 3 |
-| **Deep Learning Toolbox** | Stage 3's MLP only (§6.2): `trainnet`, `dlnetwork`, `dlfeval`, `adamupdate` | `runModule3(Model="mlp")` — the forest baseline runs without it |
+| **Deep Learning Toolbox** | Stage 3's grading network (§6.2): `trainnet`, `dlnetwork`, `dlfeval`, `adamupdate` | **all of Stage 3** — grading is neural-network only, no tree fallback |
 
 Check what you have:
 
@@ -579,11 +581,13 @@ features, not the summary row.
 ### 5.2 The runs
 
 ```matlab
-runModule3()                       % Phase 4: RandomForest baseline (§6.3)
-runModule3(Model="mlp")            % Phase 5: the ordinal-regression MLP (§6.2)
-runModule3(Ablation=true)          % Phase 6: feature-block walk (§8)
-runModule3(Model="forest", Test=true)   % Phases 7-8: freeze rules, then test ONCE
+runModule3()                % Phase 5: train the grading network (§6.2)
+runModule3(Ablation=true)   % Phase 6: feature-block walk (§8)
+runModule3(Test=true)       % Phases 7-8: freeze rules, then test ONCE
 ```
+
+> **Grading is neural-network only.** The §6.3 RandomForest baseline has been
+> removed at the project owner's instruction, overriding decision D4. See §5.5.
 
 Headless, from a shell. The ablation refits five folds per block across seven
 blocks, so it is the one worth detaching:
@@ -591,7 +595,7 @@ blocks, so it is the one worth detaching:
 ```bash
 # Linux / macOS
 cd ~/SIH_MathWorks_2026
-matlab -batch "addpath('final_algorithms/matlab/stage3'); runModule3(Model=\"forest\")"
+matlab -batch "addpath('final_algorithms/matlab/stage3'); runModule3()"
 
 nohup matlab -batch "addpath('final_algorithms/matlab/stage3'); runModule3(Ablation=true)" \
       > ablation.log 2>&1 &
@@ -600,28 +604,27 @@ tail -f ablation.log
 
 ```powershell
 # Windows (PowerShell)
-matlab -batch "cd('C:\Users\Sowjanya\Desktop\SIH_MathWorks_2026'); addpath('final_algorithms/matlab/stage3'); runModule3(Model=""forest"")"
+matlab -batch "cd('C:\Users\Sowjanya\Desktop\SIH_MathWorks_2026'); addpath('final_algorithms/matlab/stage3'); runModule3()"
 ```
 
-> Quoting differs: bash needs `\"` inside the double-quoted `-batch` string,
-> PowerShell needs `""`. Using `Model='forest'` with single quotes sidesteps it
-> on both — MATLAB accepts a char vector wherever the arguments block declares
-> a string.
+> When you pass a string option (`Block`, `Calibration`), quoting differs
+> between shells: bash needs `\"` inside the double-quoted `-batch` string,
+> PowerShell needs `""`. Single quotes — `Block='6d_nv_split'` — sidestep it on
+> both, since MATLAB accepts a char vector wherever `arguments` declares a
+> string.
 
 The Python equivalents (same plan, see §5.5 for where they differ):
 
 ```bash
-python3 final_algorithms/python/run_module3.py --model forest
-python3 final_algorithms/python/run_module3.py --model mlp
+python3 final_algorithms/python/run_module3.py
 python3 final_algorithms/python/run_module3.py --ablation
-python3 final_algorithms/python/run_module3.py --model forest --test
+python3 final_algorithms/python/run_module3.py --test
 ```
 
 Options:
 
 | Option | Default | Purpose |
 |---|---|---|
-| `Model` | `"forest"` | `"forest"` (§6.3 baseline) or `"mlp"` (§6.2) |
 | `Block` | `"6a_measured_core"` | Phase 6 block to run through; D5 starts at 6a |
 | `AllFeatures` | `false` | all 38 inputs at once — D5 advises against |
 | `Ablation` | `false` | walk every block in order |
@@ -660,19 +663,38 @@ Three things the plan tells you to expect rather than treat as bugs:
   composite (S2-40) exist to fix that — report it on its own line either way.
 - **Specificity at 90% sensitivity may miss the 85% target.** That target
   belongs to the fused system; features alone previously reached 75.4%.
-- **The forest may beat the MLP.** On 309 rows it did, decisively, within
-  resolution strata (AUC 0.879 vs 0.813). D4 says the network is adopted only
-  if it wins on the within-resolution metrics.
+- **There is no baseline to compare against.** The forest D4 made the network
+  beat has been removed, so a QWK of 0.75 cannot be judged good or bad from
+  inside this pipeline. On 309 rows the forest scored 0.779 within resolution
+  strata against the MLP's 0.753 — an informal reference point worth keeping.
 
-### 5.5 MATLAB vs Python for Stage 3
+### 5.5 The network, and the removed baseline
 
-The **MATLAB MLP is the plan's architecture** and the Python one is not.
-[`fitGradingMlp.m`](stage3/fitGradingMlp.m) implements §6.2 as written —
-dropout 0.3 on both hidden layers, He initialisation, and the §6.2.2
-class-weighted MSE via a custom `dlnetwork` training loop when the weights
-aren't flat. scikit-learn's `MLPRegressor` has no dropout layer, no He
-initialiser and no per-row sample weights, so the Python version documents all
-three as deviations. The RandomForest baseline matches closely in both.
+**Grading is neural-network only.** §6.3 and decision D4 make a RandomForest the
+required baseline the network has to beat within resolution strata; that
+baseline has been **removed at the project owner's instruction**. The plan
+document still says otherwise — this runbook is the current decision.
+
+What it costs, plainly: on the previous implementation's 309 rows the forest beat
+the MLP within resolution strata (referable AUC **0.879 vs 0.813**, QWK **0.779
+vs 0.753**), even though pooled AUC ranked them the other way round. Phase 5 now
+produces the network's numbers with nothing to judge them against.
+
+The removal covers the **grading model only**. The lesion *candidate* classifier
+— step 5 of Stage 2's five-step pipeline, in
+[`fitLesionClassifiers.m`](stage3/fitLesionClassifiers.m) — still uses a bagged
+tree ensemble. That is a separate component, the notes specify no neural network
+for it, and removing it would break lesion detection entirely.
+
+**The MATLAB network is the plan's architecture; the Python one is not.**
+[`fitGradingMlp.m`](stage3/fitGradingMlp.m) implements §6.2 as written — dropout
+0.3 on both hidden layers, He initialisation, and the §6.2.2 class-weighted MSE
+via a custom `dlnetwork` loop when the weights aren't flat (both paths verified
+to run, with the custom loop triggering correctly on an uneven class mix).
+scikit-learn's `MLPRegressor` has no dropout layer, no He initialiser and no
+per-row sample weights, so the Python version documents all three as deviations.
+With the forest gone there is no longer a model that matches closely across the
+two languages — prefer the MATLAB one for any reported result.
 
 ---
 
@@ -684,7 +706,7 @@ three as deviations. The RandomForest baseline matches closely in both.
 | `Method must be 'exact' or 'approximate'` | something reintroduced `prctile(...,"Method","inclusive")`, which is not valid MATLAB — use `percentileLinear` (§0.1) |
 | `Undefined function 'imboxfilt'` | Image Processing Toolbox missing |
 | `Not enough input arguments` from a builtin like `all` | shell quoting ate the quotes around a `-batch` string argument — use single quotes inside, or put the commands in a `.m` file and `run` it (§3.5) |
-| `Undefined function 'trainnet'` / `dlnetwork` | Deep Learning Toolbox missing — only `runModule3(Model="mlp")` needs it; the forest runs without |
+| `Undefined function 'trainnet'` | Deep Learning Toolbox missing, or MATLAB older than R2024a. Stage 3 has no tree fallback — it cannot run without it |
 | `which -all` shows two hits for one name | a stray copy on the path shadowing `stage1/`, `stage2/` or `stage3/` |
 | `Cannot open ... for writing` | `data/` doesn't exist, or a CSV is open in Excel |
 | Warning: *extracting ALL 3662 images* | `data/module3_ids.txt` missing — run `select_module3_ids.py` (§3.2). Stop the run; it is not the pilot sample |

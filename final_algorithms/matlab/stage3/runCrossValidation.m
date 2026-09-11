@@ -6,7 +6,7 @@ function oof = runCrossValidation(data, cacheDir, featureNames, options)
 %         1. fit every lesion candidate classifier on TRAIN rows only   (§4.1)
 %         2. extract lesion counts for TRAIN and the held-out fold with them
 %         3. fit z-score normalisation on TRAIN rows only
-%         4. train the model on TRAIN rows
+%         4. train the grading network on TRAIN rows
 %         5. predict the held-out fold  ->  out-of-fold predictions
 %
 %   Steps 1-2 are the expensive ones and the reason this is not a call to
@@ -21,7 +21,6 @@ arguments
     data struct
     cacheDir (1,1) string
     featureNames cell
-    options.Model (1,1) string = "forest"     % "forest" (§6.3) | "mlp" (§6.2)
     options.RefitLesions (1,1) logical = true % false is LEAKY -- QC only (§4.1)
     options.Verbose (1,1) logical = true
 end
@@ -75,13 +74,8 @@ for k = 1:numel(foldIds)
     Xtrain = zscoreApply(scaler, Xtrain);
     Xheld = zscoreApply(scaler, Xheld);
 
-    % --- step 4: train ------------------------------------------------------
-    [classWeights, rounded] = gradeClassWeights(ytrain);
-    if options.Model == "forest"
-        model = fitGradingForest(Xtrain, ytrain, classWeights(rounded + 1));
-    else
-        model = fitGradingMlp(Xtrain, ytrain);
-    end
+    % --- step 4: train the network ------------------------------------------
+    model = fitGradingMlp(Xtrain, ytrain);
 
     % --- step 5: predict the held-out fold ----------------------------------
     scores(heldMask) = predictGradingModel(model, Xheld);

@@ -1,20 +1,22 @@
 """Stage 3 runner: Module3_Plan.md Phases 4-8.
 
-    # Phase 4 - RandomForest baseline, lesion classifiers refitted per fold
-    python final_algorithms/python/run_module3.py --model forest
-
-    # Phase 5 - the MLP on the same folds and features
-    python final_algorithms/python/run_module3.py --model mlp
+    # Phase 5 - train the grading network, lesion classifiers refitted per fold
+    python final_algorithms/python/run_module3.py
 
     # Phase 6 - feature-block ablation
     python final_algorithms/python/run_module3.py --ablation
 
     # Phases 7-8 - freeze the rules, then touch the test set ONCE
-    python final_algorithms/python/run_module3.py --model forest --test
+    python final_algorithms/python/run_module3.py --test
+
+The model is the S6.2 ordinal-regression MLP. The RandomForest baseline of
+S6.3/D4 has been REMOVED at the project owner's instruction - Module 3 grading
+is neural-network only - so Phase 5's numbers have no baseline to be compared
+against (see stage3/models.py).
 
 Reads data/module3_dataset.csv and data/module3_candidates/*.pkl, both written
 by extract_module3_features.py (Phase 2). Writes a JSON report to
-data/module3_report_<model>.json.
+data/module3_report_mlp.json.
 
 The test set is evaluated only with --test, and only after the cutpoints,
 calibration and operating point have been fitted on out-of-fold dev
@@ -43,7 +45,6 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", default=os.path.join(REPO, "data"))
-    ap.add_argument("--model", choices=["forest", "mlp"], default="forest")
     ap.add_argument("--block", default="6a_measured_core",
                     help="Phase 6 block to run through (D5 starts at 6a)")
     ap.add_argument("--all-features", action="store_true",
@@ -75,22 +76,22 @@ def main():
 
     if args.ablation:
         print("\n=== Phase 6: feature-block ablation ===")
-        table = pipeline.run_ablation(dataset, cache, model_kind=args.model, refit_lesions=refit)
-        _write(args, {"phase": 6, "model": args.model, "ablation": table})
+        table = pipeline.run_ablation(dataset, cache, refit_lesions=refit)
+        _write(args, {"phase": 6, "model": "mlp", "ablation": table})
         return
 
     feature_names = col.all_model_inputs() if args.all_features else col.model_inputs(args.block)
     print(f"\nfeatures: {len(feature_names)} "
           f"({'all model inputs' if args.all_features else args.block})")
 
-    print(f"\n=== Cross-validation ({args.model}) ===")
+    print("\n=== Cross-validation (MLP) ===")
     oof = pipeline.run_cross_validation(dataset, cache, feature_names,
-                                        model_kind=args.model, refit_lesions=refit)
+                                        refit_lesions=refit)
 
     print("\n=== Decision rules, fitted on out-of-fold predictions ===")
     rules = pipeline.fit_decision_rules(oof, calibration_method=args.calibration)
 
-    report = {"phase": 8 if args.test else 5, "model": args.model,
+    report = {"phase": 8 if args.test else 5, "model": "mlp",
               "features": feature_names, "n_features": len(feature_names),
               "refit_lesions": refit,
               "cutpoints": rules["cutpoints"].tolist(),
@@ -103,7 +104,7 @@ def main():
     if args.test:
         print("\n=== Phase 8: the held-out test set, evaluated ONCE ===")
         test_report = pipeline.evaluate_test(dataset, cache, feature_names, rules,
-                                             model_kind=args.model, refit_lesions=refit)
+                                             refit_lesions=refit)
         report["test"] = test_report
         _print_report("test (75 rows)", test_report)
         print(f"  DME overrides:    {test_report['dme_overrides']} images referred "
@@ -140,7 +141,7 @@ def _print_report(title, report):
 
 
 def _write(args, report):
-    path = os.path.join(args.data, f"module3_report_{args.model}.json")
+    path = os.path.join(args.data, "module3_report_mlp.json")
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2, default=float)
     print(f"\nwrote {path}")

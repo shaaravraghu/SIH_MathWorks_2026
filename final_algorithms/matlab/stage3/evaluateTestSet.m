@@ -11,7 +11,6 @@ arguments
     cacheDir (1,1) string
     featureNames cell
     rules struct
-    options.Model (1,1) string = "forest"
     options.RefitLesions (1,1) logical = true
     options.Verbose (1,1) logical = true
 end
@@ -42,12 +41,7 @@ scaler = zscoreFit(Xdev);
 Xdev = zscoreApply(scaler, Xdev);
 Xtest = zscoreApply(scaler, Xtest);
 
-[classWeights, rounded] = gradeClassWeights(ydev);
-if options.Model == "forest"
-    model = fitGradingForest(Xdev, ydev, classWeights(rounded + 1));
-else
-    model = fitGradingMlp(Xdev, ydev);
-end
+model = fitGradingMlp(Xdev, ydev);
 
 scores = predictGradingModel(model, Xtest);
 predicted = applyCutpoints(scores, rules.cutpoints);
