@@ -5,13 +5,6 @@ Segmentation: a label per (m x m) pixels (except vessel)
 SCALE TABLE: 
 - Use percentage-wise radius (1D) & area (2D) per elements present in field of view.
 
-OPTIC DISC
-- Use brightness data as the only primary algorithm.
-  -> Avoid regions with blood vessel detected (to avoid confusion).
-- Use centre-surround: [mean_col(OD) - mean_col(surr)]
-  and percentage radius (on FOV) algorithm to confirm.
-- Output: (center-x, center-y, radius-r)
-
 
 VESSELS
 
@@ -33,3 +26,29 @@ Concept / labels:
     [x, y] [a] [0, 1, 2, 3] [0, 1, 2]
              (b)          (c)
 
+
+OPTIC DISC
+- Use brightness data as the only primary algorithm.
+  -> Avoid regions with blood vessel detected (to avoid confusion).
+- Use centre-surround: [mean_col(OD) - mean_col(surr)]
+  and percentage radius (on FOV) algorithm to confirm.
+- Output: (center-x, center-y, radius-r)
+
+
+FOVEA:
+From center of Optic Disk tavel to +- 1.5X (of expected Fovea Location) with a +- 25 degree axis tilt allowed. Choose the spot which is the most darkest (and small test to see brightness increases around those spots radially).
+Output: (x, y): no radius to be include since we are not bothered about macula and fovea is only the concern)
+
+
+Pre-Feature Engineering (for Heamorrage, Nerve Fibre Ischemia, and Hard Exudates)
+- first find spots of expected colour range in retina area (exclusive of fovea, optic disk, and vessels) with heamorrage (R: a-b, G: c-d, B: e-f), Hard Exudates (R: a-b, G: c-d, B: e-f), and Nerve Fibre Ischemia (R: a-b, G: c-d, B: e-f)
+
+Feature Engineering (for Heamorrage, Nerve Fibre Ischemia, and Hard Exudates)
+
+Feature Engineering (for IRMA and Neovascularisation)
+- find regions of minor blood vessels and provided classification.
+- apply feature engineering on it to verify (1-true, 0-false) (d) segment of VESSELS
+
+Draw Segementation of Quadrants
+
+Apply count function to verify with 4-2-1 rule!
