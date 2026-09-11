@@ -32,6 +32,19 @@ repo = fileparts(fileparts(here));
 if options.AptosDir == "", options.AptosDir = fullfile(repo, "aptos2019-blindness-detection"); end
 if options.OutDir == "", options.OutDir = fullfile(repo, "data"); end
 
+% Phase 1 worklist (§5.1, §5.3). Default to the 500-image pilot sample when it
+% is present, so a bare extractModule3Features() extracts the grade-balanced
+% pilot set rather than silently sweeping all 3,662 APTOS training images.
+% Regenerate the list with final_algorithms/python/select_module3_ids.py.
+if options.IdsFile == ""
+    defaultIds = fullfile(options.OutDir, "module3_ids.txt");
+    if isfile(defaultIds), options.IdsFile = defaultIds; end
+end
+if options.SplitsFile == ""
+    defaultSplits = fullfile(options.OutDir, "module3_splits.csv");
+    if isfile(defaultSplits), options.SplitsFile = defaultSplits; end
+end
+
 % §2.3: carried in the CSV, never used as features. `resolution` is for
 % stratification only; the network must never see it.
 DATASET_COLUMNS = {'id_code', 'diagnosis', 'split', 'cv_fold', 'resolution', 'sample_source'};
@@ -48,10 +61,18 @@ labels = containers.Map(cellstr(train.id_code), num2cell(train.diagnosis));
 if options.IdsFile ~= ""
     ids = strtrim(readlines(options.IdsFile));
     ids = ids(ids ~= "");
+    fprintf('worklist: %s (%d images)\n', options.IdsFile, numel(ids));
 else
     ids = train.id_code;
+    warning('extractModule3Features:noWorklist', ...
+        ['No ids file and no %s -- extracting ALL %d images in train.csv, not the ' ...
+         '500-image pilot sample. Run final_algorithms/python/select_module3_ids.py first.'], ...
+        fullfile(options.OutDir, "module3_ids.txt"), numel(ids));
 end
 splits = readSplits(options.SplitsFile);
+if options.SplitsFile ~= ""
+    fprintf('splits:   %s\n', options.SplitsFile);
+end
 
 cacheDir = fullfile(options.OutDir, "module3_candidates");
 if ~isfolder(cacheDir), mkdir(cacheDir); end

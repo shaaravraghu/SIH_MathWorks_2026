@@ -69,14 +69,35 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--aptos", default=os.path.join(REPO, "aptos2019-blindness-detection"))
     ap.add_argument("--out", default=os.path.join(REPO, "data"))
-    ap.add_argument("--ids", help="one id_code per line (e.g. data/module3_ids.txt); default: all of train.csv")
+    ap.add_argument("--ids", help="one id_code per line; default: data/module3_ids.txt if present, else all of train.csv")
     ap.add_argument("--splits", help="Phase 1 CSV with id_code, split, cv_fold, sample_source")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
+    # Phase 1 worklist (S5.1, S5.3). Default to the 500-image pilot sample when
+    # it is present, so a bare run extracts the grade-balanced pilot set rather
+    # than silently sweeping all 3,662 APTOS training images. Regenerate the
+    # list with final_algorithms/python/select_module3_ids.py.
+    if not args.ids:
+        default_ids = os.path.join(args.out, "module3_ids.txt")
+        if os.path.isfile(default_ids):
+            args.ids = default_ids
+    if not args.splits:
+        default_splits = os.path.join(args.out, "module3_splits.csv")
+        if os.path.isfile(default_splits):
+            args.splits = default_splits
+
     labels = read_labels(os.path.join(args.aptos, "train.csv"))
-    ids = read_ids(args.ids) if args.ids else list(labels)
+    if args.ids:
+        ids = read_ids(args.ids)
+        print(f"worklist: {args.ids} ({len(ids)} images)")
+    else:
+        ids = list(labels)
+        print(f"WARNING: no ids file - extracting ALL {len(ids)} images in train.csv, not the "
+              f"500-image pilot sample. Run select_module3_ids.py first.")
     splits = read_splits(args.splits)
+    if args.splits:
+        print(f"splits:   {args.splits}")
 
     cache_dir = os.path.join(args.out, "module3_candidates")
     os.makedirs(cache_dir, exist_ok=True)
