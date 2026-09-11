@@ -396,19 +396,80 @@ loss: mean squared error, weighted per class (inverse frequency within the train
 L2 weight decay; early stopping on an inner validation split of the training folds
 ```
 
+**Two hidden layers, not one or three.** This matches the architecture already
+measured in §6.3 ((32,16) and (64,32) MLPs). A single hidden layer would need
+to be very wide to match that capacity, concentrating overfitting risk in one
+layer; a third layer adds weights that ~340 rows/fold cannot support without
+materially heavier regularisation. Phase 5's grid (§8) is where width is
+tuned — depth is not, at this data size.
+
+#### 6.2.1 Architecture
+
+| Layer | Type | Units | Activation | Weight init | Bias init |
+|---|---|---|---|---|---|
+| 0 | `featureInputLayer` | 33 (38 with D1) | — | — (z-scored inputs) | — |
+| 1 | `fullyConnectedLayer` | 32 | ReLU | **He** (`"he"`) — scaled for the ReLU that follows it; Glorot under-scales for ReLU's half-zeroed output | zeros |
+| 1 | `dropoutLayer` | — | — | p = 0.3 | — |
+| 2 | `fullyConnectedLayer` | 16 | ReLU | He | zeros |
+| 2 | `dropoutLayer` | — | — | p = 0.3 | — |
+| 3 (output) | `fullyConnectedLayer` | 1 | **linear / identity** — this is regression, not classification, so nothing follows the last layer | Glorot/Xavier (MATLAB's `fullyConnectedLayer` default) | zeros, or optionally the training-fold mean grade (≈2.0), to skip the first few epochs of learning the mean |
+
+#### 6.2.2 Hyperparameters
+
+| Hyperparameter | Value | Why |
+|---|---|---|
+| Optimizer | Adam (β1=0.9, β2=0.999 — MATLAB defaults) | standard choice for a small tabular MLP; per-parameter adaptive step size is cheap insurance even after z-scoring |
+| Initial learning rate | **1e-3** | Adam's usual default; large enough to move quickly off the He-initialised start, small enough not to overshoot on a loss surface defined by ~340 rows |
+| LR schedule | piecewise, ×0.5 every 30 epochs | an extra, cheap regulariser stacked on dropout/L2/early stopping, in the same spirit as the rest of §6.2 — the network is deliberately kept from moving fast late in training |
+| Batch size | **32** | ≈11 mini-batches per fold-epoch; small enough to keep some gradient noise (which regularises), large enough that each batch's z-scored features aren't dominated by one or two outlier rows |
+| Max epochs | 200 | an upper bound only — early stopping should end training well before this |
+| Early stopping patience | 20 epochs, inner validation split of the training folds | as in §6.1 |
+| L2 weight decay | 1e-2 | justified by the size check, §6.2.4 |
+| Dropout | 0.3, both hidden layers | as in the sketch |
+| Loss | MSE, weighted per class | formula below |
+| Gradient clipping | none by default; add `GradientThreshold=1` (L2-norm) only if a fold's training diverges | small network + small LR makes divergence unlikely, but the guard is free |
+
+**Loss weighting.** Each row's squared error is weighted by the inverse
+frequency of its (rounded) grade **within that fold's training rows**,
+normalised so the mean weight is 1:
+
+```
+w_c = (N_train / 5) / n_c
+loss = (1 / N_train) * sum_i  w_{grade(i)} * (score_i - grade_i)^2
+```
+
+`n_c` is computed from the actual training-fold composition each fold, not
+hard-coded to 85 — grade-stratified folds should land close to 68 per grade,
+but the weights must track what the fold actually contains.
+
+#### 6.2.3 Weight and bias initialization
+
+- Both hidden layers: **He initialization** for weights — the right scale for
+  a ReLU nonlinearity, since Glorot assumes a symmetric activation.
+- Output layer: **Glorot** for weights (MATLAB's default), since nothing after
+  it is a ReLU.
+- All biases start at **zero**, except optionally the output layer's bias,
+  which can be seeded at the training-fold mean grade (≈2.0). That's a
+  convenience to speed early convergence, not a requirement — skip it if it
+  complicates the fold loop.
+
 MATLAB (Deep Learning Toolbox) sketch:
 
 ```matlab
 layers = [
     featureInputLayer(numFeatures, Normalization="zscore")
-    fullyConnectedLayer(32)
+    fullyConnectedLayer(32, WeightsInitializer="he", BiasInitializer="zeros")
     reluLayer
     dropoutLayer(0.3)
-    fullyConnectedLayer(16)
+    fullyConnectedLayer(16, WeightsInitializer="he", BiasInitializer="zeros")
     reluLayer
     dropoutLayer(0.3)
-    fullyConnectedLayer(1)];
-opts = trainingOptions("adam", L2Regularization=1e-2, ...
+    fullyConnectedLayer(1, WeightsInitializer="glorot", BiasInitializer="zeros")];
+opts = trainingOptions("adam", ...
+    InitialLearnRate=1e-3, LearnRateSchedule="piecewise", ...
+    LearnRateDropFactor=0.5, LearnRateDropPeriod=30, ...
+    MiniBatchSize=32, MaxEpochs=200, ...
+    L2Regularization=1e-2, ...
     ValidationData={Xval, Yval}, ValidationPatience=20, ...
     Shuffle="every-epoch", Verbose=false);
 net = trainnet(Xtrain, Ytrain, layers, "mse", opts);
@@ -417,10 +478,22 @@ net = trainnet(Xtrain, Ytrain, layers, "mse", opts);
 `Normalization="zscore"` computes its statistics from the data the network is
 trained on, which satisfies step 3.
 
-**Size check.** 38 inputs × 32 + 32 = 1,248; 32 × 16 + 16 = 528; 16 × 1 + 1 = 17.
+**Applying the class weights.** `trainnet`'s custom loss (`lossFcn(Y,T)`) sees
+only predictions and targets, not per-row weights. Two options:
+
+- **Custom training loop** (`dlnetwork` + `dlfeval` + `adamupdate`): compute the
+  weighted MSE of §6.2.2 directly. This is the exact implementation.
+- **Plain `"mse"`**: because the folds are grade-stratified from a 100-per-grade
+  sample, every `w_c` is close to 1. Check the weights per fold, and use plain
+  MSE only if they all fall within about 0.9–1.1.
+
+#### 6.2.4 Size check
+
+38 inputs × 32 + 32 = 1,248; 32 × 16 + 16 = 528; 16 × 1 + 1 = 17.
 That is **1,793 trainable weights against about 340 training rows per fold** —
 over five weights per example. The network is deliberately small, and dropout,
-weight decay and early stopping are all required, not optional.
+weight decay, the decaying learning rate and early stopping are all required,
+not optional.
 
 ### 6.3 Required baseline: RandomForest
 
