@@ -14,6 +14,7 @@ datasets/
 
 # But include populated feature CSVs
 !data/aptos_train_module1_features.csv
+!data/aptos_train_module2_features.csv
 
 # Python
 __pycache__/
