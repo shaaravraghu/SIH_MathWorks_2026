@@ -23,15 +23,24 @@ for Visual Studio Code** (MathWorks).
 
 ### 0.1 MATLAB release
 
-**R2022a or newer.** The port calls `prctile(x, p, "Method", "inclusive")` to
-match numpy's default percentile interpolation; the `"Method"` argument was
-added in R2022a. On an older release every percentile threshold silently shifts.
+**R2021a or newer** for Stages 1–2 and the RandomForest path of Stage 3
+(`name=value` call syntax and `arguments` blocks).
+**R2024a or newer** for `runModule3(Model="mlp")`, which uses `trainnet`.
 
-Check:
+Verified working on **R2024a** — Stage 2's filter/percentile path and every
+Stage 3 function have been executed on this machine.
 
 ```matlab
 version('-release')
 ```
+
+> **Percentiles do not use `prctile`.** Every percentile threshold goes through
+> [`percentileLinear.m`](stage2/percentileLinear.m), which reproduces
+> `numpy.percentile`'s default interpolation to ~5e-15. MATLAB's own `prctile`
+> places the i-th of n sorted values at `100*(i-0.5)/n` while numpy uses
+> `100*(i-1)/(n-1)`; on a 1,000-sample vector that is a 0.034 difference at the
+> tails, which is exactly where these thresholds sit (p90/p92/p95/p96/p99).
+> Don't "simplify" it back to `prctile`.
 
 ### 0.2 Required toolboxes
 
@@ -69,6 +78,38 @@ license('test', 'Statistics_Toolbox')
 
 All commands below are typed into that MATLAB command window, except the shell
 blocks marked **bash** / **PowerShell**.
+
+### 0.3.0 Which MATLAB — desktop, CLI, VS Code, or Online
+
+The `matlab` binary is the same in every case; only where you type matters.
+
+| Way in | How | Best for |
+|---|---|---|
+| **Desktop app** | launch MATLAB, use its Command Window | interactive work, `imshow`, debugging |
+| **CLI, interactive** | `matlab -nodesktop` (Windows) / `matlab -nodisplay` (Linux) | a terminal REPL with no GUI overhead |
+| **CLI, one-shot** | `matlab -batch "…"` | the batch runs; headless, exits with a real status code |
+| **VS Code terminal** | the same `matlab` commands | identical to the CLI — VS Code's terminal is just a terminal |
+| **VS Code extension** | Command Palette → *MATLAB: Open Command Window* | Command Window without leaving the editor |
+| **MATLAB Online** | matlab.mathworks.com | Stage 3 only — see the note below |
+
+There is **no difference** between "the CLI" and "the CLI from VS Code". Pick
+whichever terminal you like.
+
+**For long runs prefer a `.m` file over a long `-batch` string.** Shell quoting
+mangles nested quotes differently on PowerShell and bash, and a stripped quote
+turns `stage3Columns("all")` into `stage3Columns(all)` — which fails with a
+confusing `Not enough input arguments` from the builtin `all`. Writing the
+commands to a script and calling `matlab -batch "run('myscript.m')"` sidesteps
+it entirely. Note that `run` changes the working directory to the script's
+folder, so use absolute paths inside the script or `cd` first.
+
+**MATLAB Online**: the code runs, but the APTOS images (~9 GB) generally exceed
+the free MATLAB Drive quota, and sessions idle-timeout during a 500-image
+extraction. The practical split is **extract locally, grade online** — Stage 3
+never touches a pixel, needing only `module3_dataset.csv` plus the candidate
+cache (a few hundred MB). Upload a single zip and unzip it in MATLAB rather
+than syncing thousands of files, and check what your licence gives you for
+Drive space and compute hours before planning around it.
 
 ### 0.3.1 Linux specifics
 
@@ -639,9 +680,10 @@ three as deviations. The RandomForest baseline matches closely in both.
 
 | Symptom | Cause |
 |---|---|
-| `Unrecognized function 'prctile'` | Statistics and Machine Learning Toolbox missing |
-| `Too many input arguments` on `prctile` | MATLAB older than R2022a — `"Method","inclusive"` unsupported |
+| `Unrecognized function 'percentileLinear'` | `stage2/` not on the path — Stage 3 needs it too (§0.1) |
+| `Method must be 'exact' or 'approximate'` | something reintroduced `prctile(...,"Method","inclusive")`, which is not valid MATLAB — use `percentileLinear` (§0.1) |
 | `Undefined function 'imboxfilt'` | Image Processing Toolbox missing |
+| `Not enough input arguments` from a builtin like `all` | shell quoting ate the quotes around a `-batch` string argument — use single quotes inside, or put the commands in a `.m` file and `run` it (§3.5) |
 | `Undefined function 'trainnet'` / `dlnetwork` | Deep Learning Toolbox missing — only `runModule3(Model="mlp")` needs it; the forest runs without |
 | `which -all` shows two hits for one name | a stray copy on the path shadowing `stage1/`, `stage2/` or `stage3/` |
 | `Cannot open ... for writing` | `data/` doesn't exist, or a CSV is open in Excel |

@@ -44,9 +44,9 @@ if isempty(vals)
     candidate = false(size(tophat));
     return;
 end
-% numpy's default percentile interpolation is linear; prctile's
-% "inclusive" method matches it (R2022a+).
-thresh = prctile(vals, THRESH_CANDIDATE_TOPHAT_PERCENTILE, "Method", "inclusive");
+% percentileLinear matches numpy.percentile's default exactly; MATLAB's
+% own prctile uses a different convention -- see percentileLinear.m.
+thresh = percentileLinear(vals, THRESH_CANDIDATE_TOPHAT_PERCENTILE);
 candidate = tophat > thresh;
 if ~isempty(workingMask)
     candidate = candidate & workingMask;

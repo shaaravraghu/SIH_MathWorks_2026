@@ -32,9 +32,9 @@ candidates = {};
 if ~any(diffImg(:) > 0)
     return;
 end
-% numpy's default percentile interpolation is linear; prctile's
-% "inclusive" method matches it (R2022a+).
-thresh = max(prctile(diffImg(m.MEASUREMENT_MASK), percentile, "Method", "inclusive"), 1e-4);
+% percentileLinear matches numpy.percentile's default exactly; MATLAB's
+% own prctile uses a different convention -- see percentileLinear.m.
+thresh = max(percentileLinear(diffImg(m.MEASUREMENT_MASK), percentile), 1e-4);
 bw = diffImg > thresh;
 
 % scipy.ndimage.label's default structure is 4-connectivity (a cross, no

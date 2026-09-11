@@ -18,15 +18,15 @@ else
     valsFine = fine(:);
     valsCoarse = coarse(:);
 end
-% numpy's default percentile interpolation is linear; prctile's "inclusive"
-% method matches it (R2022a+).
+% percentileLinear matches numpy.percentile's default exactly; MATLAB's
+% own prctile uses a different convention -- see percentileLinear.m.
 if ~isempty(valsFine)
-    pFine = prctile(valsFine, vc.EXCESS_PERCENTILE, "Method", "inclusive");
+    pFine = percentileLinear(valsFine, vc.EXCESS_PERCENTILE);
 else
     pFine = 0.0;
 end
 if ~isempty(valsCoarse)
-    pCoarse = prctile(valsCoarse, vc.EXCESS_PERCENTILE, "Method", "inclusive");
+    pCoarse = percentileLinear(valsCoarse, vc.EXCESS_PERCENTILE);
 else
     pCoarse = 0.0;
 end

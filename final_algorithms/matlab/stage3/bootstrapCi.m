@@ -29,7 +29,7 @@ if isempty(samples), return; end
 
 % "inclusive" matches numpy's default linear interpolation, as everywhere else
 % in this project (see the stage2 percentile note).
-ci.lo = prctile(samples, 100 * alpha / 2, "Method", "inclusive");
-ci.hi = prctile(samples, 100 * (1 - alpha / 2), "Method", "inclusive");
+ci.lo = percentileLinear(samples, 100 * alpha / 2);
+ci.hi = percentileLinear(samples, 100 * (1 - alpha / 2));
 ci.n_boot = numel(samples);
 end

@@ -30,7 +30,7 @@ end
 % a far better start than naive rounding when the regression is compressed.
 counts = accumarray(trueGrades + 1, 1, [5, 1]);
 cumulative = cumsum(counts(1:end-1)) / max(sum(counts), 1);
-cutpoints = sort(prctile(scores, 100 * min(max(cumulative, 0), 1)', "Method", "inclusive"));
+cutpoints = sort(percentileLinear(scores, 100 * min(max(cumulative, 0), 1)'));
 cutpoints = cutpoints(:)';
 
 candidates = candidatePositions(scores);
@@ -64,6 +64,6 @@ u = unique(scores);
 if numel(u) < 2, positions = u(:)'; return; end
 positions = ((u(1:end-1) + u(2:end)) / 2)';
 if numel(positions) > 400
-    positions = prctile(positions, linspace(0, 100, 400), "Method", "inclusive");
+    positions = percentileLinear(positions, linspace(0, 100, 400));
 end
 end

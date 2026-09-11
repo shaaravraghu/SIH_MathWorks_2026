@@ -12,9 +12,10 @@ else
     values = response(:);
 end
 if ~isempty(values)
-    % numpy's default percentile interpolation is linear; prctile's
+    % percentileLinear matches numpy.percentile's default exactly; MATLAB's
+% own prctile uses a different convention -- see percentileLinear.m.
     % "inclusive" method matches it (R2022a+).
-    thresh = prctile(values, vc.THRESH_MATCHED_FILTER_PERCENTILE, "Method", "inclusive");
+    thresh = percentileLinear(values, vc.THRESH_MATCHED_FILTER_PERCENTILE);
 else
     thresh = 0.0;
 end
