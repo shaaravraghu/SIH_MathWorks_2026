@@ -181,6 +181,12 @@ end
 importOpts = detectImportOptions(path);
 importOpts = setvartype(importOpts, importOpts.VariableNames, 'string');
 t = readtable(path, importOpts);
+% Test rows have an empty cv_fold, which reads as <missing>; char(<missing>) errors.
+for name = string(t.Properties.VariableNames)
+    col = t.(name);
+    col(ismissing(col)) = "";
+    t.(name) = col;
+end
 for k = 1:height(t)
     splits(char(t.id_code(k))) = struct('split', t.split(k), 'cv_fold', t.cv_fold(k), ...
                                         'sample_source', t.sample_source(k));

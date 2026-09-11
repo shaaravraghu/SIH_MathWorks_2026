@@ -5,18 +5,17 @@ function result = varianceOfLaplacianNormed(gray, rngStream)
 %   a 5-point-stencil Laplacian against the (Right, Left, Up, Down)
 %   neighbours at each sampled point, avoiding a full-image convolution
 %   (notes #3.1).
-%   NOTE: exact pass/fail/borderline numeric thresholds for #3.1-#3.3 are
-%   not pinned in the source notes (only the sampling strategy is). The
-%   THRESH_* constants below are placeholders that must be calibrated
-%   empirically before these gates are used to reject images; the
-%   sampling/metric math itself follows the notes exactly.
+%   The notes pin no numeric thresholds; the per-resolution calibrated ones
+%   come from stage1SharpnessThresholds. The sampling/metric math itself
+%   follows the notes exactly.
 
 if nargin < 2 || isempty(rngStream)
     rngStream = RandStream('mt19937ar', 'Seed', sum(100 * clock));
 end
 
-THRESH_LAPLACIAN_VAR_NORMED_FAIL = 0.0015; % placeholder, needs calibration
-THRESH_LAPLACIAN_VAR_NORMED_BORDERLINE = 0.0030; % placeholder, needs calibration
+thresholds = stage1SharpnessThresholds(size(gray));
+THRESH_LAPLACIAN_VAR_NORMED_FAIL = thresholds.lap_fail;
+THRESH_LAPLACIAN_VAR_NORMED_BORDERLINE = thresholds.lap_borderline;
 
 [rows, cols] = samplePointsInDisk(size(gray), [], [], rngStream);
 

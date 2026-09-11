@@ -1,16 +1,15 @@
 function result = brennerGradientGate(gray, rngStream)
 %BRENNERGRADIENTGATE #3.2 Brenner Gradient gate, first stage of the #3 cascade.
-%   NOTE: exact pass/fail/borderline numeric thresholds for #3.1-#3.3 are
-%   not pinned in the source notes (only the sampling strategy is). The
-%   THRESH_* constant below is a placeholder that must be calibrated
-%   empirically before this gate is used to reject images; the
-%   sampling/metric math itself follows the notes exactly.
+%   The notes pin no numeric threshold; the per-resolution calibrated one
+%   comes from stage1SharpnessThresholds. The sampling/metric math itself
+%   follows the notes exactly.
 
 if nargin < 2 || isempty(rngStream)
     rngStream = RandStream('mt19937ar', 'Seed', sum(100 * clock));
 end
 
-THRESH_BRENNER_FAIL = 50.0; % placeholder, needs calibration
+thresholds = stage1SharpnessThresholds(size(gray));
+THRESH_BRENNER_FAIL = thresholds.brenner_fail;
 
 boxes = sampleSquaresInDisk(size(gray), [], [], rngStream);
 n = size(boxes, 1);

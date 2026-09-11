@@ -1,17 +1,16 @@
 function result = tenengradVarGate(gray, rngStream)
 %TENENGRADVARGATE #3.3 TenengradVar gate, third stage of the #3 cascade
 %   (confirmation for Variance of Laplacian (NORMED)).
-%   NOTE: exact pass/fail/borderline numeric thresholds for #3.1-#3.3 are
-%   not pinned in the source notes (only the sampling strategy is). The
-%   THRESH_* constants below are placeholders that must be calibrated
-%   empirically before this gate is used to reject images.
+%   The notes pin no numeric thresholds; the per-resolution calibrated ones
+%   come from stage1SharpnessThresholds.
 
 if nargin < 2 || isempty(rngStream)
     rngStream = RandStream('mt19937ar', 'Seed', sum(100 * clock));
 end
 
-THRESH_TENENGRAD_VAR_FAIL = 0.02; % placeholder, needs calibration
-THRESH_TENENGRAD_VAR_BORDERLINE = 0.05; % placeholder, needs calibration
+thresholds = stage1SharpnessThresholds(size(gray));
+THRESH_TENENGRAD_VAR_FAIL = thresholds.tenengrad_fail;
+THRESH_TENENGRAD_VAR_BORDERLINE = thresholds.tenengrad_borderline;
 
 boxes = sampleSquaresInDisk(size(gray), [], [], rngStream);
 n = size(boxes, 1);

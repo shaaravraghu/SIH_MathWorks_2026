@@ -20,7 +20,13 @@ CLAHE_CLIP_LIMITS = [2.0, 1.5, 1.0]; % OpenCV-scale values; try progressively mi
 CLAHE_CLIP_LIMITS_NORM = CLAHE_CLIP_LIMITS / 100; % rescaled into adapthisteq's [0,1] ClipLimit range
 CLAHE_TILE_GRID = [8, 8];
 CLAHE_MAX_SATURATION_INCREASE = 0.02; % absolute increase in saturated-pixel fraction
-CLAHE_MAX_NOISE_INCREASE = 1.5; % ratio of high-frequency energy after/before
+% Noise is judged RELATIVE TO THE CONTRAST GAIN. CLAHE is a local gain, so
+% high-frequency energy scales with it: on the Module 3 sample the mildest
+% step raised contrast 2.3-2.7x and HF energy 2.9-3.2x, so an absolute
+% after/before ratio <= 1.5 could never pass alongside "contrast must
+% increase" and every borderline image was rejected. Noise amplified
+% 1.5x beyond the signal is the degradation the check is meant to catch.
+CLAHE_MAX_NOISE_INCREASE = 1.5; % (HF energy after/before) / (local contrast after/before)
 
 green = image(:, :, 2);
 baseContrast = localContrast(green, mask);
@@ -44,7 +50,8 @@ for i = 1:numel(CLAHE_CLIP_LIMITS)
 
     contrastOk = contrast > baseContrast;
     saturationOk = (saturation - baseSaturation) <= CLAHE_MAX_SATURATION_INCREASE;
-    noiseOk = metrics.noise_ratio <= CLAHE_MAX_NOISE_INCREASE;
+    contrastGain = contrast / (baseContrast + 1e-6);
+    noiseOk = metrics.noise_ratio / max(contrastGain, 1e-6) <= CLAHE_MAX_NOISE_INCREASE;
 
     if contrastOk && saturationOk && noiseOk
         result = struct('status', "pass", 'image', candidate, 'chosen', metrics, 'attempts', attempts);

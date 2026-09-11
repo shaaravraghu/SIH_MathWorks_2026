@@ -16,15 +16,16 @@ function result = regionMin(gray, lapResult, fovMask)
 %   it (notes #3.4). Reuses the Laplacian samples already computed in
 %   #3.1 (lapResult), so this is only 5 grouped statistics over an
 %   existing array -- negligible added cost.
-%   NOTE: THRESH_REGION_MIN_* below are placeholder thresholds that must
-%   be calibrated empirically before this gate is used to reject images.
+%   The per-resolution calibrated thresholds come from
+%   stage1SharpnessThresholds.
 
 if nargin < 3
     fovMask = [];
 end
 
-THRESH_REGION_MIN_FAIL = 0.0010; % placeholder, needs calibration
-THRESH_REGION_MIN_BORDERLINE = 0.0020; % placeholder, needs calibration
+thresholds = stage1SharpnessThresholds(size(gray));
+THRESH_REGION_MIN_FAIL = thresholds.region_min_fail;
+THRESH_REGION_MIN_BORDERLINE = thresholds.region_min_borderline;
 
 h = size(gray, 1);
 w = size(gray, 2);

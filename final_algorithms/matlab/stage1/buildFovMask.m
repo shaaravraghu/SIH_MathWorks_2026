@@ -7,7 +7,9 @@ function fov = buildFovMask(image, blackThresh)
 %
 %   fov is a scalar struct with fields mask (logical), center_row,
 %   center_col, horizontal_radius, vertical_radius -- mirrors Python's
-%   FOVMask dataclass. Coordinates are 1-based (MATLAB convention) rather
+%   FOVMask dataclass -- plus clipped_horizontal / clipped_vertical, true
+%   when that extent reaches the image border, i.e. the frame and not the
+%   retina ends it. Coordinates are 1-based (MATLAB convention) rather
 %   than Python's 0-based, but all downstream quantities are extents and
 %   ratios so the shift cancels out.
 
@@ -27,9 +29,11 @@ mask = ~isBlack;
 if isempty(ys)
     [h, w] = size(mask);
     fov = struct('mask', mask, 'center_row', floor(h / 2) + 1, 'center_col', floor(w / 2) + 1, ...
-        'horizontal_radius', 0.0, 'vertical_radius', 0.0);
+        'horizontal_radius', 0.0, 'vertical_radius', 0.0, ...
+        'clipped_horizontal', false, 'clipped_vertical', false);
     return;
 end
+[h, w] = size(mask);
 
 centerRow = round(mean(ys));
 centerCol = round(mean(xs));
@@ -38,8 +42,10 @@ centerCol = round(mean(xs));
 rowPixels = find(mask(centerRow, :));
 if isempty(rowPixels)
     horizontalExtent = 0;
+    clippedHorizontal = false;
 else
     horizontalExtent = max(rowPixels) - min(rowPixels) + 1;
+    clippedHorizontal = min(rowPixels) == 1 || max(rowPixels) == w;
 end
 horizontalRadius = horizontalExtent / 2.0;
 
@@ -47,11 +53,14 @@ horizontalRadius = horizontalExtent / 2.0;
 colPixels = find(mask(:, centerCol));
 if isempty(colPixels)
     verticalExtent = 0;
+    clippedVertical = false;
 else
     verticalExtent = max(colPixels) - min(colPixels) + 1;
+    clippedVertical = min(colPixels) == 1 || max(colPixels) == h;
 end
 verticalRadius = verticalExtent / 2.0;
 
 fov = struct('mask', mask, 'center_row', centerRow, 'center_col', centerCol, ...
-    'horizontal_radius', horizontalRadius, 'vertical_radius', verticalRadius);
+    'horizontal_radius', horizontalRadius, 'vertical_radius', verticalRadius, ...
+    'clipped_horizontal', clippedHorizontal, 'clipped_vertical', clippedVertical);
 end

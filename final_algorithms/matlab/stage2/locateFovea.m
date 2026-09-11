@@ -30,7 +30,16 @@ FOVEA_SEARCH_ANGULAR_STEPS = 11; % placeholder: sampling density across the +-25
 brightness = toGray(imageRgb); % reuse stage1's toGray - identical Rec.601 luma formula
 [h, w, ~] = size(brightness);
 odCenter = [opticDisc.center_x, opticDisc.center_y];
-ddPx = 2.0 * opticDisc.radius;
+% One disc diameter comes from the pinned working-resolution constant, NOT
+% from the localised radius. Images are resampled so the retina radius is
+% exactly TARGET_R, which is what fixes DD_PX at 124 px; every other pixel
+% constant in Stage 2 is anchored the same way. Deriving it from
+% opticDisc.radius instead made the search collapse: that radius is the
+% smallest of the candidates tried, ~12 px, so ddPx came out ~25 px and the
+% fovea was searched 30-75 px from the disc rather than ~300. Every image in
+% the Module 3 sample then reported 0.24-0.60 DD against an expected 1.2-3.0,
+% which also tilted the OD-fovea axis the quadrant map is built on.
+ddPx = stage2Constants().DD_PX;
 
 axisDeg = axisAngleDeg(odCenter, h, w, fovMask);
 expectedDistPx = EXPECTED_FOVEA_DISTANCE_DD * ddPx;

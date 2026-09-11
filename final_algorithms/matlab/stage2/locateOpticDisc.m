@@ -45,7 +45,27 @@ end
 
 brightness = toGray(imageRgb); % reuse stage1's toGray - identical Rec.601 luma formula
 
-best = struct('score', -inf, 'y0', 0, 'x0', 0, 'radius', 0);
+% Each candidate radius proposes its own best centre, and the radii compete
+% on centre-surround contrast. Comparing the raw disc-mean across radii does
+% not work: a smaller averaging window always reaches a higher maximum, so
+% the smallest radius won on all 464 images of the Module 3 sample --
+% od_radius_pct came out a constant 2.85 and, sitting below the 5%
+% plausibility floor, `confirmed` was never true. Contrast is the quantity
+% the notes already use to confirm the disc, and it peaks at the radius that
+% actually matches it.
+% Each candidate radius proposes its own best centre, and the radii compete
+% on centre-surround contrast, preferring those inside the anatomical
+% plausibility band. Raw disc-mean cannot rank radii -- a smaller averaging
+% window always reaches a higher maximum, so the smallest radius won on all
+% 464 images of the Module 3 sample (od_radius_pct a constant 2.85, below
+% the 5% floor, so `confirmed` was never true). Contrast alone reverses the
+% bias, since a wider annulus reaches further into dark retina and keeps
+% growing: the largest radius then won and sat above the 12% ceiling.
+% Restricting the choice to the band leaves the contrast test doing the
+% confirming, which is what the notes intend.
+imgD = double(imageRgb);
+best = struct('contrast', -inf, 'y0', 0, 'x0', 0, 'radius', 0);
+bestInBand = best;
 fractions = linspace(OD_SEARCH_FRACTION_LOW, OD_SEARCH_FRACTION_HIGH, OD_SEARCH_RADIUS_STEPS);
 for frac = fractions
     radius = max(3.0, frac * fovRadius);
@@ -53,34 +73,25 @@ for frac = fractions
     if ~isempty(fovMask)
         discMean(~fovMask) = -inf;
     end
-    [score, linIdx] = max(discMean(:));
+    [~, linIdx] = max(discMean(:));
     [row, col] = ind2sub(size(discMean), linIdx);
-    if score > best.score
-        best = struct('score', score, 'y0', row - 1, 'x0', col - 1, 'radius', radius);
+    candidateContrast = centreSurroundContrast(imgD, [h, w], col - 1, row - 1, radius, OD_ANNULUS_OUTER_FACTOR);
+    candidate = struct('contrast', candidateContrast, 'y0', row - 1, 'x0', col - 1, 'radius', radius);
+    if candidateContrast > best.contrast
+        best = candidate;
     end
+    inBand = fovRadius > 0 && radius / fovRadius >= OD_RADIUS_FOV_FRACTION_LOW && ...
+             radius / fovRadius <= OD_RADIUS_FOV_FRACTION_HIGH;
+    if inBand && candidateContrast > bestInBand.contrast
+        bestInBand = candidate;
+    end
+end
+if isfinite(bestInBand.contrast)
+    best = bestInBand;
 end
 
 cy = best.y0; cx = best.x0; radius = best.radius; % 0-based centre
-
-innerMask = circleMask([h, w], cx, cy, max(round(radius), 1));
-outerR = max(round(radius * OD_ANNULUS_OUTER_FACTOR), 1);
-outerMask = circleMask([h, w], cx, cy, outerR) & ~innerMask;
-
-imgD = double(imageRgb);
-if any(innerMask(:))
-    meanInner = [mean(subChannel(imgD, innerMask, 1)), mean(subChannel(imgD, innerMask, 2)), mean(subChannel(imgD, innerMask, 3))];
-else
-    meanInner = [0 0 0];
-end
-if any(outerMask(:))
-    meanOuter = [mean(subChannel(imgD, outerMask, 1)), mean(subChannel(imgD, outerMask, 2)), mean(subChannel(imgD, outerMask, 3))];
-else
-    meanOuter = [0 0 0];
-end
-% [mean_col(OD) - mean_col(surr)] summarised as a single scalar contrast
-% (the notes give it per-channel; a vector magnitude is used here as the
-% scalar confirmation score - documented judgment call).
-contrast = norm(meanInner - meanOuter);
+contrast = best.contrast;
 
 if fovRadius > 0
     radiusFraction = radius / fovRadius;
@@ -92,6 +103,28 @@ confirmed = plausible && contrast >= THRESH_OD_CENTRE_SURROUND_MIN_CONTRAST;
 
 result = struct('center_x', cx, 'center_y', cy, 'radius', radius, ...
     'centre_surround_contrast', contrast, 'confirmed', confirmed);
+end
+
+
+function contrast = centreSurroundContrast(imgD, sz, cx, cy, radius, outerFactor)
+% [mean_col(OD) - mean_col(surr)] summarised as a single scalar contrast
+% (the notes give it per-channel; a vector magnitude is used here as the
+% scalar confirmation score - documented judgment call).
+innerMask = circleMask(sz, cx, cy, max(round(radius), 1));
+outerR = max(round(radius * outerFactor), 1);
+outerMask = circleMask(sz, cx, cy, outerR) & ~innerMask;
+
+if any(innerMask(:))
+    meanInner = [mean(subChannel(imgD, innerMask, 1)), mean(subChannel(imgD, innerMask, 2)), mean(subChannel(imgD, innerMask, 3))];
+else
+    meanInner = [0 0 0];
+end
+if any(outerMask(:))
+    meanOuter = [mean(subChannel(imgD, outerMask, 1)), mean(subChannel(imgD, outerMask, 2)), mean(subChannel(imgD, outerMask, 3))];
+else
+    meanOuter = [0 0 0];
+end
+contrast = norm(meanInner - meanOuter);
 end
 
 

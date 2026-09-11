@@ -5,7 +5,7 @@ with a **neural network trained on tabular features**. The features come from th
 finalized [`Stage_1_CNN`](Stage_1_CNN) and [`Stage_2_CNN`](Stage_2_CNN)
 algorithms, combined into one CSV. Pilot size: **500 APTOS images**.
 
-**What this is, in the terms of the reference doc.**
+**What this is, in the terms of /the reference doc.**
 [DR_Pipeline_Techniques_and_Datasets.md](../napolean/docs/DR_Pipeline_Techniques_and_Datasets.md)
 describes three grading branches: (a) an end-to-end image CNN, (b) a
 lesion-feature classifier, and (c) fusion of the two. **This plan is branch (b)**,
