@@ -28,7 +28,7 @@ from PIL import Image
 from scipy import ndimage as ndi
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from extract_module1_features import colour_metric, field_metrics, TARGET_R  # noqa: E402
+from code_testing.python.extract_module1_features import colour_metric, field_metrics, TARGET_R  # noqa: E402
 
 warnings.filterwarnings("ignore")
 Image.MAX_IMAGE_PIXELS = None
