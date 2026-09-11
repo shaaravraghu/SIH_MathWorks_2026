@@ -1,0 +1,35 @@
+LOCALIZATION / SEGMENTATION NOTES
+Localization: (x, y, r); r = radius (approx. boundaries irrespective of circularity)
+Segmentation: a label per (m x m) pixels (except vessel)
+
+SCALE TABLE: 
+- Use percentage-wise radius (1D) & area (2D) per elements present in field of view.
+
+OPTIC DISC
+- Use brightness data as the only primary algorithm.
+  -> Avoid regions with blood vessel detected (to avoid confusion).
+- Use centre-surround: [mean_col(OD) - mean_col(surr)]
+  and percentage radius (on FOV) algorithm to confirm.
+- Output: (center-x, center-y, radius-r)
+
+
+VESSELS
+
+(a) Map out vessels of certain pixels (approx. width of main & 1st branch) using MATCHED FILTERING.
+  -> pixel true -> 1
+
+(b) Use FRANGI method to pass through all (no min. fixed pixel width) 
+  -> venous beading (super high rb) -> 0
+  -> major vessel (big rb) -> 1
+  -> 1st branch (small rb) -> 2
+  -> minor vessel (super small rb) -> 3
+
+(c)
+- major vessel - FRANGI - regular -> 0
+- neovascularisation (high density) -> 1
+- IRMA (low density) -> 2
+
+Concept / labels:
+    [x, y] [a] [0, 1, 2, 3] [0, 1, 2]
+             (b)          (c)
+
