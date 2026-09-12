@@ -40,6 +40,8 @@ arguments
     options.Test (1,1) logical = false             % Phase 8 -- ONCE (§7.2)
     options.Calibration (1,1) string = "platt"
     options.RefitLesions (1,1) logical = true      % false is LEAKY -- QC only (§4.1)
+    options.SaveModel (1,1) logical = false        % also fit and save a deployable model
+    options.ModelFile (1,1) string = ""            % default <DataDir>/module3_model.mat
 end
 
 here = fileparts(mfilename('fullpath'));
@@ -103,6 +105,50 @@ report.out_of_fold_predictions = table(oof.ids, oof.grades, data.cv_fold(oof.mas
                       'predicted_grade', 'referable_probability', 'predicted_referable'});
 
 printGradingReport('out-of-fold (dev rows)', rules.oof_report);
+
+if options.SaveModel
+    % Cross-validation measures the design; it leaves no model behind, because
+    % each fold model has seen only 4/5 of the dev rows. A deployable model is
+    % fitted ONCE on every dev row, and inherits the cutpoints, calibrator and
+    % operating point fitted above on out-of-fold predictions -- refitting
+    % those on this model's own in-sample scores would be optimistic (§7.2).
+    % The test rows stay out of it, so Phase 8 remains unspent.
+    fprintf('\n=== Final model: all dev rows ===\n');
+    if options.ModelFile == ""
+        options.ModelFile = fullfile(options.DataDir, "module3_model.mat");
+    end
+    isDev = data.split == "dev";
+    devIds = data.ids(isDev);
+    gradeMap = containers.Map(cellstr(data.ids), num2cell(data.grades));
+
+    overrides = containers.Map('KeyType', 'char', 'ValueType', 'any');
+    lesionClassifiers = [];
+    if options.RefitLesions
+        lesionClassifiers = fitLesionClassifiers(cacheDir, devIds, gradeMap, true);
+        overrides = recomputeLesionColumns(cacheDir, devIds, lesionClassifiers, true);
+    end
+
+    X = datasetMatrix(data, isDev, featureNames, overrides);
+    scaler = zscoreFit(X);
+    gradingModel = fitGradingMlp(zscoreApply(scaler, X), data.grades(isDev));
+
+    % Everything inference needs downstream of Stage 2's candidates.
+    bundle = struct();
+    bundle.grading_model = gradingModel;
+    bundle.scaler = scaler;
+    bundle.lesion_classifiers = lesionClassifiers;
+    bundle.features = {featureNames};
+    bundle.cutpoints = rules.cutpoints;
+    bundle.calibrator = rules.calibrator;
+    bundle.operating_point = rules.operating_point;
+    bundle.n_train = sum(isDev);
+    bundle.created = datetime('now');
+    save(options.ModelFile, 'bundle');
+
+    report.model_file = options.ModelFile;
+    fprintf('  trained on %d dev rows, %d features (%s)\n', sum(isDev), numel(featureNames), gradingModel.kind);
+    fprintf('  saved %s\n', options.ModelFile);
+end
 
 if options.Test
     fprintf('\n=== Phase 8: the held-out test set, evaluated ONCE ===\n');
