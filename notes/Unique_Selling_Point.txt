@@ -1,2 +1,9 @@
 1. Reduce probability of false-negative reports to near zero.
-2. Solutions are just not ML algorithms copied but are speed, cost and edge cases equipped.
+2. Solutions are just not ML algorithms copied but are speed, cost and edge cases equipped (with new mathematical approaches used).
+3. Multi-level cascade: Cheap costing algorithms (with low acceptance rate) to high cost algorithm implementation (with fine-tuned acceptance).
+4. Clinical rule override over probabilistic neural network approach (for correct reports).
+5. Process images locally rather over the cloud (saving cost) and patient privacy.
+6. Uncertainty aware response: instead of providing DR and no DR; use need for review step where clarification is needed!
+7. Hybrid CV + RNN approach: reduces token cost of images by running gathered metrics over RNNs rather than running it over and over again using Computer Vision.
+8. Explainable AI (classical over LLM): provide human-understandable reports over data collected.
+9. GradCAM Attention Maps: map regions for opthamologists to clearly understand retina lesions.
