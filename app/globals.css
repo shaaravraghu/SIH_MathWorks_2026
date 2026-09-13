@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background-color: #050510;
+  color: #f4f2ff;
+  scroll-behavior: smooth;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: #a855f7;
+  color: white;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0a18;
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #a855f7, #6366f1);
+  border-radius: 8px;
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/[0.04] backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.35)];
+  }
+
+  .glass-card {
+    @apply glass rounded-3xl;
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-fuchsia-400 via-violet-400 to-cyan-300;
+  }
+
+  .btn-primary {
+    @apply relative inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 font-semibold text-white
+      bg-gradient-to-r from-fuchsia-500 via-violet-500 to-indigo-500
+      shadow-[0_0_25px_rgba(168,85,247,0.45)] transition-all duration-300
+      hover:shadow-[0_0_45px_rgba(168,85,247,0.75)] hover:scale-[1.03] active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-7 py-3.5 font-semibold
+      text-white/90 glass hover:bg-white/[0.08] transition-all duration-300 hover:scale-[1.02] active:scale-[0.98];
+  }
+
+  .input-field {
+    @apply w-full rounded-2xl bg-white/[0.05] border border-white/10 px-4 py-3.5 text-white placeholder-white/30
+      outline-none transition-all duration-200 focus:border-fuchsia-400/60 focus:bg-white/[0.08]
+      focus:ring-4 focus:ring-fuchsia-500/10;
+  }
+
+  .label-text {
+    @apply mb-2 block text-sm font-medium text-white/60;
+  }
+}
+
+.bg-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+}

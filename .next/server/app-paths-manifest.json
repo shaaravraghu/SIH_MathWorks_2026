@@ -1,0 +1,9 @@
+{
+  "/submit/page": "app/submit/page.js",
+  "/page": "app/page.js",
+  "/api/auth/me/route": "app/api/auth/me/route.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/api/auth/signup/route": "app/api/auth/signup/route.js",
+  "/api/submissions/[id]/route": "app/api/submissions/[id]/route.js",
+  "/api/submissions/[id]/report/route": "app/api/submissions/[id]/report/route.js"
+}
